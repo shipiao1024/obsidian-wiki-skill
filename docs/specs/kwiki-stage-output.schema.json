@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KwikiStageOutput",
+  "description": "JSON contract for L2 pipeline stage CLI output. Each python -m kwiki <stage> produces JSON with this shape.",
+  "type": "object",
+  "required": ["status", "stage"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "invalid_input", "not_configured", "dependency_missing", "runtime_failed"],
+      "description": "Stage execution status"
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["fetch", "ingest", "compile", "apply", "review"],
+      "description": "Pipeline stage name"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Explanation when status is not ok"
+    },
+    "articles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slug": { "type": "string" },
+          "title": { "type": "string" },
+          "source_id": { "type": "string" }
+        }
+      },
+      "description": "Fetched/ingested article summaries (fetch/ingest stages)"
+    },
+    "compiled_payload": {
+      "type": "object",
+      "description": "Prepare-only or API compile output (compile stage)"
+    },
+    "ingest_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "slug": { "type": "string" },
+          "status": { "type": "string", "enum": ["ingested", "skipped"] },
+          "compile_mode": { "type": "string", "enum": ["heuristic", "llm", "llm-v2"] },
+          "quality": { "type": "string }
+        }
+      },
+      "description": "Per-article ingest results (apply stage)"
+    },
+    "output": {
+      "type": "string",
+      "description": "Output file path (review stage)"
+    }
+  }
+}

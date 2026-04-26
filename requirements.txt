@@ -1,0 +1,88 @@
+# =============================================================================
+# obsidian-wiki-skill 依赖清单
+# =============================================================================
+#
+# 安装方式选择：
+#   标准路径（GitHub/PyPI）：  pip install -r requirements.txt
+#   中国镜像路径：            pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+# 按需安装分组：pip install -r requirements.txt --only-binary :all: -g "wechat"
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [核心] Python 运行时 — 无额外 pip 依赖，全部 stdlib
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# [测试] 运行测试套件必须
+# -----------------------------------------------------------------------------
+pytest>=8.0
+pytest-mock>=3.12
+
+# =============================================================================
+# 以下按「来源类型」分组，按需安装
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [微信] 微信公众号文章入库 — 必装（主要使用场景）
+#   安装方式（标准）：
+#     git clone --depth 1 https://github.com/bzd6661/wechat-article-for-ai.git .tools/wechat-article-for-ai
+#     pip install -r .tools/wechat-article-for-ai/requirements.txt --target .python-packages
+#     pip install chardet --target .python-packages
+#   安装方式（中国镜像）：
+#     git clone --depth 1 https://github.com/bzd6661/wechat-article-for-ai.git .tools/wechat-article-for-ai
+#     pip install -r .tools/wechat-article-for-ai/requirements.txt --target .python-packages -i https://pypi.tuna.tsinghua.edu.cn/simple
+#     pip install chardet --target .python-packages -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+#   ⚠ Camoufox 浏览器二进制（~530MB）首次运行时自动下载，下载源为 GitHub Releases。
+#     中国网络可能较慢或超时，替代方案：
+#     1. 手动下载：https://github.com/daijro/camoufox/releases  → 解压到 %LOCALAPPDATA%\camoufox\camoufox\Cache\
+#     2. 通过代理：set HTTPS_PROXY=http://127.0.0.1:7890 后运行
+#     3. 使用 ghproxy 镜像：set CAMOUFOX_MIRROR=https://ghproxy.com/ 后手动下载
+# -----------------------------------------------------------------------------
+
+# wechat-article-for-ai 的 pip 依赖（需通过其 requirements.txt 安装，此处仅作记录）：
+# camoufox[geoip]     — 反检测浏览器自动化（首次运行下载 ~530MB 浏览器二进制）
+# markdownify          — HTML → Markdown 转换
+# beautifulsoup4       — HTML 解析
+# httpx                — 异步 HTTP 客户端
+# mcp                  — Model Context Protocol SDK
+chardet                # 避免 Windows 下 requests 字符集后备告警
+
+# -----------------------------------------------------------------------------
+# [视频] YouTube / Bilibili / 抖音视频入库 — 按需安装
+#   安装方式（标准）：pip install yt-dlp
+#   安装方式（中国镜像）：pip install yt-dlp -i https://pypi.tuna.tsinghua.edu.cn/simple
+# -----------------------------------------------------------------------------
+yt-dlp>=2024.0         # 视频字幕/元数据提取（也可独立安装二进制）
+
+# -----------------------------------------------------------------------------
+# [视频ASR] 无字幕视频的 ASR fallback — 按需安装
+#   安装方式（标准）：pip install faster-whisper
+#   安装方式（中国镜像）：pip install faster-whisper -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+#   ⚠ 模型权重首次使用时从 Hugging Face 下载。中国镜像：
+#     set HF_ENDPOINT=https://hf-mirror.com
+# -----------------------------------------------------------------------------
+faster-whisper>=1.0    # 无字幕视频 ASR（tiny~75MB, small~460MB, medium~1.5GB）
+
+# -----------------------------------------------------------------------------
+# [PDF] 本地 PDF 文件入库 — 按需安装
+#   安装方式（标准）：pip install pypdf
+#   安装方式（中国镜像）：pip install pypdf -i https://pypi.tuna.tsinghua.edu.cn/simple
+# -----------------------------------------------------------------------------
+pypdf>=6.0             # PDF 文本提取
+
+# =============================================================================
+# [外部工具] 非 pip 依赖，需单独安装
+# =============================================================================
+#
+# baoyu-url-to-markdown — 通用网页入库适配器
+#   标准安装：npm install -g baoyu-url-to-markdown
+#   中国镜像：npm install -g baoyu-url-to-markdown --registry=https://registry.npmmirror.com
+#   或通过 bun 运行本地脚本：bun <path>/baoyu-url-to-markdown/scripts/main.ts
+#
+# wechat-article-for-ai — 微信公众号文章抓取（git clone + pip install）
+#   标准安装：git clone --depth 1 https://github.com/bzd6661/wechat-article-for-ai.git .tools/wechat-article-for-ai
+#   中国镜像：git clone --depth 1 https://ghproxy.com/https://github.com/bzd6661/wechat-article-for-ai.git .tools/wechat-article-for-ai
+#             或：git clone --depth 1 https://mirror.ghproxy.com/https://github.com/bzd6661/wechat-article-for-ai.git .tools/wechat-article-for-ai

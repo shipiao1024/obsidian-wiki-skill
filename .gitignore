@@ -1,0 +1,46 @@
+# === Security: NEVER commit these ===
+cookies.txt
+scripts/cookies.txt
+*.cookie
+*.cookies
+
+# === Runtime / cache artifacts ===
+.runtime-e2e/
+.runtime-fetch/
+scripts/.runtime-fetch/
+.tmp-tests/
+tmpod*/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.python-packages/
+
+# === Environment / secrets ===
+.env
+.env.*
+*.secret
+*.key
+*.pem
+*.token
+
+# === Logs ===
+*.log
+
+# === Nested git metadata ===
+.tools/wechat-article-for-ai/.git/
+
+# === OS artifacts ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

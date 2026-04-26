@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdapterResult",
+  "description": "JSON contract for L1 adapter output. Adapters return this TypedDict; pipeline stages consume it without loading adapter source code.",
+  "type": "object",
+  "required": ["status", "reason", "input_kind", "source_id", "adapter_name", "assets", "extra"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "not_configured", "dependency_missing", "browser_not_ready", "platform_blocked", "network_failed", "runtime_failed", "unsupported", "empty_result", "invalid_input"],
+      "description": "Adapter execution status"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable reason for the status"
+    },
+    "input_kind": {
+      "type": "string",
+      "enum": ["url", "file", "text"],
+      "description": "Input type classification"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "Source type identifier (e.g. wechat_article, web_url, video_youtube)"
+    },
+    "adapter_name": {
+      "type": "string",
+      "description": "Name of the adapter that processed this input"
+    },
+    "quality": {
+      "type": "string",
+      "enum": ["low", "acceptable", "high"],
+      "description": "Source quality assessment (optional)"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Normalized metadata from the source",
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "date": { "type": "string" },
+        "source_url": { "type": "string" },
+        "source_id": { "type": "string" },
+        "source_kind": { "type": "string" },
+        "language": { "type": "string" }
+      },
+      "required": ["title", "source_id", "source_kind"]
+    },
+    "markdown_body": {
+      "type": "string",
+      "description": "Markdown-formatted content from the source"
+    },
+    "plain_text_body": {
+      "type": "string",
+      "description": "Plain-text content from the source"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_url": { "type": "string" },
+          "local_path": { "type": "string" },
+          "media_type": { "type": "string", "enum": ["image", "audio", "video", "html_snapshot", "subtitle", "other"] }
+        },
+        "required": ["local_path", "media_type"]
+      },
+      "description": "List of downloaded/captured assets"
+    },
+    "extra": {
+      "type": "object",
+      "description": "Adapter-specific extra data"
+    }
+  }
+}

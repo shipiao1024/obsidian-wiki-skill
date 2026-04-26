@@ -1,0 +1,56 @@
+{
+  "version": "2.0",
+  "compile_target": {
+    "vault": "",
+    "raw_path": "",
+    "slug": "2024-01-15--AIDV-冲击-EEA",
+    "title": "AIDV 对 EEA 的冲击",
+    "author": "测试作者",
+    "date": "2024-01-15",
+    "source_url": ""
+  },
+  "document_outputs": {
+    "brief": {
+      "one_sentence": "AIDV 对 EEA 的核心冲击不是增加一个新模块，而是把原先按功能分工的决策链压缩进更集中的计算与推理架构里。",
+      "key_points": [
+        "AIDV 与 SDV 的根本差异是人写规则转向 AI 学规则。",
+        "FSD v12 说明这不是功能升级，而是从模块化流水线到端到端推理的架构重写。",
+        "这种变化直接推动 EEA 从更好的分工转向更少的分工。",
+        "E2E 的优势是能覆盖工程师难以穷举的边缘场景，但代价是验证和解释难度显著上升。",
+        "需要区分已量产事实、研究原型与行业愿景，不能把三者混为一谈。"
+      ],
+      "who_should_read": ["关注自动驾驶架构演进的人"],
+      "why_revisit": ["FSD v12 的案例可以作为后续讨论的锚点"]
+    },
+    "source": {
+      "core_summary": [
+        "AIDV 与 SDV 的根本区别：前者由 AI 模型实时生成驾驶决策，后者以人类手写规则为核心。",
+        "FSD v12 是一次架构重写：模块化流水线被端到端神经网络大幅压缩。",
+        "这会把 EEA 的演进方向从更好的分工推向取消分工与更集中的计算架构。",
+        "AIDV 的收益是更强泛化能力，代价是系统更难解释和验证。",
+        "需区分量产事实、研究原型与行业愿景。"
+      ],
+      "knowledge_base_relation": ["与自动驾驶域相关"],
+      "contradictions": [],
+      "reinforcements": ["巩固了端到端架构的趋势判断"]
+    }
+  },
+  "knowledge_proposals": {
+    "domains": [{"name": "自动驾驶", "action": "link_existing", "reason": "已有域", "confidence": "high", "evidence": ["自动驾驶域已存在"]}],
+    "concepts": [{"name": "端到端架构", "action": "create_candidate", "reason": "新出现的核心概念", "confidence": "high", "evidence": ["FSD v12 采用了端到端"]}],
+    "entities": [{"name": "特斯拉 FSD", "action": "link_existing", "reason": "已有实体", "confidence": "medium", "evidence": ["FSD v12 是代表案例"]}]
+  },
+  "update_proposals": [],
+  "claim_inventory": [
+    {"claim": "AIDV 把决策链压缩进更集中的架构", "claim_type": "interpretation", "confidence": "high", "evidence": ["原文核心判断"], "suggested_destination": ["sources/AIDV-冲击-EEA"], "verification_needed": false},
+    {"claim": "FSD v12 是架构重写而非功能升级", "claim_type": "interpretation", "confidence": "medium", "evidence": ["文章分析"], "suggested_destination": ["concepts/端到端架构"], "verification_needed": true}
+  ],
+  "open_questions": ["端到端架构如何解决验证难题？", "AIDV 是否意味着 EEA 完全取消域控制器？"],
+  "cross_domain_insights": [],
+  "stance_impacts": [],
+  "review_hints": {
+    "priority": "medium",
+    "needs_human_review": true,
+    "suggested_review_targets": ["concepts/端到端架构"]
+  }
+}

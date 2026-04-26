@@ -1,0 +1,36 @@
+sub_skills:
+  - id: ingest
+    name: Ingest / Compile / Apply
+    description: Ingest a URL or local content into the vault, compile it, and apply the result.
+    references:
+      - references/pipeline-scripts.md
+
+  - id: review
+    name: Review & Maintenance
+    description: Run lint, stale reports, delta compile, synthesis refresh, review queue, graph operations.
+    references:
+      - references/review-scripts.md
+
+  - id: query
+    name: Query
+    description: Query the wiki with one of 8 output modes (brief, briefing, draft-context, contradict, digest, essay, reading-list, talk-track).
+    references:
+      - references/query-scripts.md
+
+  - id: helper
+    name: Helpers & CLI
+    description: Cookie management, question ledger, stance manager, import jobs.
+    references:
+      - references/helper-scripts.md
+
+  - id: video
+    name: Video Processing
+    description: Video transcript, collection protection, and cookie rules.
+    references:
+      - references/video-rules.md
+
+  - id: deep-research
+    name: Deep Research
+    description: Hypothesis-driven research combining vault knowledge with targeted web searches. Forms testable hypotheses, runs evidence-gated research rounds, and produces analysis with evidence labels, dependency tracking, and boundary conditions.
+    references:
+      - references/deep-research-protocol.md
