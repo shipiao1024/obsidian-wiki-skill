@@ -17,12 +17,14 @@ Design philosophy references [Karpathy's llm-wiki methodology](https://gist.gith
 
 ## Attachment Examples
 
-The repository includes small local-file fixtures so the GitHub homepage can show concrete attachment examples instead of only describing them:
+The repository includes small local-file fixtures and a graph UI preview so the GitHub homepage can show concrete attachment examples instead of only describing them:
+
+![Knowledge graph preview](docs/assets/knowledge-graph-screenshot.png)
 
 - [Sample PDF fixture](references/examples/local-pdf-01.pdf)
 - [Low-quality PDF fixture](references/examples/local-pdf-low-01.pdf)
 
-These files are useful for validating local attachment ingest, binary fixture handling, and post-ingest asset copying into the vault.
+These assets are useful for validating local attachment ingest, binary fixture handling, graph output presentation, and post-ingest asset copying into the vault.
 
 ---
 
