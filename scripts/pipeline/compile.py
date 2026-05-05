@@ -1,10 +1,19 @@
-"""LLM compile wrapper: try_llm_compile and payload shape helpers."""
+"""LLM compile wrapper: try_llm_compile and payload shape helpers.
+
+Four explicit compile modes (no auto-degradation):
+  - "prepare-only" (default): generate payload for LLM agent to compile in conversation
+  - "chunked-prepare": split large docs into chunks, generate per-chunk payloads
+  - "api-compile": call OpenAI-compatible API directly (unattended batch)
+  - "heuristic": no LLM, heuristic extraction only
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline.shared import Article, detect_domains, sanitize_filename
+from pipeline.shared import Article, sanitize_filename
+
+_COMPILE_MODES = {"prepare-only", "chunked-prepare", "api-compile", "heuristic"}
 
 
 def try_llm_compile(
@@ -12,47 +21,168 @@ def try_llm_compile(
     article: Article,
     slug: str,
     raw_path: Path,
-    disabled: bool,
+    disabled: bool = False,
+    *,
+    mode: str = "prepare-only",
+    chunk_size: int = 500,
 ) -> tuple[dict[str, object] | None, str | None]:
+    """Try LLM compile with explicit mode selection.
+
+    Args:
+        disabled: Legacy flag, equivalent to mode="heuristic".
+        mode: "prepare-only" | "chunked-prepare" | "api-compile" | "heuristic".
+        chunk_size: Line count per chunk for chunked-prepare mode.
+    """
+    # Legacy compatibility: --no-llm-compile overrides mode
     if disabled:
-        return None, "LLM compile disabled by --no-llm-compile."
-    try:
-        from llm_compile_ingest import compile_article_auto as llm_compile_article
+        mode = "heuristic"
 
-        payload = llm_compile_article(
-            vault=vault,
-            raw_path=raw_path,
-            title=article.title,
-            author=article.author,
-            date=article.date,
-            source_url=article.source,
-            slug=slug,
-            schema_version="2.0",
-        )
+    if mode == "heuristic":
+        return None, "LLM compile disabled — using heuristic fallback."
 
-        # Validation gate: check structural integrity before accepting
-        from .validate_compile import validate_compile_result
-        is_valid, reason = validate_compile_result(payload)
-        if not is_valid:
-            return None, f"Compile validation failed: {reason}. Heuristic fallback used."
+    if mode == "chunked-prepare":
+        try:
+            from llm_compile_ingest import prepare_chunked_payloads
+            payload = prepare_chunked_payloads(
+                vault=vault,
+                raw_path=raw_path,
+                title=article.title,
+                author=article.author,
+                date=article.date,
+                source_url=article.source,
+                slug=slug,
+                chunk_size=chunk_size,
+            )
+            payload["prepare_only"] = True
+            return payload, "chunked-prepare payloads generated. LLM should process each chunk then synthesize."
+        except Exception as exc:
+            return None, f"chunked-prepare failed: {exc}"
 
-        return payload, None
-    except Exception as exc:
-        return None, str(exc)
+    if mode == "prepare-only":
+        try:
+            from llm_compile_ingest import prepare_compile_payload_v2
+            payload = prepare_compile_payload_v2(
+                vault=vault,
+                raw_path=raw_path,
+                title=article.title,
+                author=article.author,
+                date=article.date,
+                source_url=article.source,
+                slug=slug,
+            )
+            payload["prepare_only"] = True
+            return payload, "prepare-only payload generated. LLM should compile interactively."
+        except Exception as exc:
+            return None, f"prepare-only failed: {exc}"
+
+    if mode == "api-compile":
+        try:
+            from llm_compile_ingest import compile_article_auto as llm_compile_article
+            payload = llm_compile_article(
+                vault=vault,
+                raw_path=raw_path,
+                title=article.title,
+                author=article.author,
+                date=article.date,
+                source_url=article.source,
+                slug=slug,
+                schema_version="2.0",
+            )
+            from .validate_compile import validate_compile_result
+            is_valid, reason = validate_compile_result(payload)
+            if not is_valid:
+                return None, f"Compile validation failed: {reason}"
+            return payload, None
+        except RuntimeError as exc:
+            if "not configured" in str(exc).lower():
+                return None, "API key not configured. Set WECHAT_WIKI_API_KEY or use default prepare-only mode."
+            return None, str(exc)
+        except Exception as exc:
+            return None, str(exc)
+
+    return None, f"Unknown compile mode: {mode}"
+
+
+def try_llm_compile_two_step(
+    vault: Path,
+    article: Article,
+    slug: str,
+    raw_path: Path,
+    disabled: bool = False,
+    *,
+    mode: str = "prepare-only",
+) -> tuple[dict[str, object] | None, str | None]:
+    """Two-step CoT compile: extract facts first, then compile wiki structure.
+
+    Only works in api-compile mode. Falls back to prepare-only for other modes.
+    """
+    if disabled:
+        mode = "heuristic"
+
+    if mode == "heuristic":
+        return None, "LLM compile disabled — using heuristic fallback."
+
+    if mode == "prepare-only":
+        try:
+            from llm_compile_ingest import prepare_compile_payload_v2
+            payload = prepare_compile_payload_v2(
+                vault=vault,
+                raw_path=raw_path,
+                title=article.title,
+                author=article.author,
+                date=article.date,
+                source_url=article.source,
+                slug=slug,
+            )
+            payload["prepare_only"] = True
+            return payload, "prepare-only payload generated. LLM should compile interactively."
+        except Exception as exc:
+            return None, f"prepare-only failed: {exc}"
+
+    if mode == "api-compile":
+        try:
+            from llm_compile_ingest import compile_article_two_step
+            payload = compile_article_two_step(
+                vault=vault,
+                raw_path=raw_path,
+                title=article.title,
+                author=article.author,
+                date=article.date,
+                source_url=article.source,
+                slug=slug,
+            )
+            from .validate_compile import validate_compile_result
+            is_valid, reason = validate_compile_result(payload)
+            if not is_valid:
+                return None, f"Compile validation failed: {reason}"
+            return payload, None
+        except RuntimeError as exc:
+            if "not configured" in str(exc).lower():
+                return None, "API key not configured. Set WECHAT_WIKI_API_KEY or use default prepare-only mode."
+            return None, str(exc)
+        except Exception as exc:
+            return None, str(exc)
+
+    return None, f"Unknown compile mode: {mode}"
 
 
 def compile_reason_from_payload(compiled_payload: dict[str, object] | None, compile_reason: str | None) -> str:
     if compiled_payload:
+        if compiled_payload.get("prepare_only"):
+            return "prepare-only payload generated."
         if compiled_payload.get("schema_version") == "2.0":
             return "LLM compile v2 succeeded."
         return "LLM compile succeeded."
     if compile_reason:
         return compile_reason
-    return "Heuristic fallback used."
+    return "Compile failed — no pages generated."
 
 
 def compile_shape_from_payload(compiled_payload: dict[str, object] | None) -> dict[str, object] | None:
     if not isinstance(compiled_payload, dict):
+        return None
+    # Prepare-only and chunked-prepare payloads skip page generation
+    if compiled_payload.get("prepare_only"):
         return None
     if compiled_payload.get("schema_version") != "2.0":
         result = compiled_payload.get("result")
@@ -64,6 +194,8 @@ def compile_shape_from_payload(compiled_payload: dict[str, object] | None) -> di
     source = document_outputs.get("source") if isinstance(document_outputs.get("source"), dict) else {}
     knowledge_proposals = result.get("knowledge_proposals") if isinstance(result.get("knowledge_proposals"), dict) else {}
     domains: list[str] = []
+    candidate_concepts: list[str] = []
+    candidate_entities: list[str] = []
     for item in knowledge_proposals.get("domains", []):
         if not isinstance(item, dict):
             continue
@@ -71,17 +203,34 @@ def compile_shape_from_payload(compiled_payload: dict[str, object] | None) -> di
         action = item.get("action", "").strip() if isinstance(item.get("action"), str) else ""
         if name and action != "no_page":
             domains.append(name)
+    for item in knowledge_proposals.get("concepts", []):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name", "").strip() if isinstance(item.get("name"), str) else ""
+        action = item.get("action", "").strip() if isinstance(item.get("action"), str) else ""
+        if name and action == "create_candidate":
+            candidate_concepts.append(name)
+    for item in knowledge_proposals.get("entities", []):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name", "").strip() if isinstance(item.get("name"), str) else ""
+        action = item.get("action", "").strip() if isinstance(item.get("action"), str) else ""
+        if name and action == "create_candidate":
+            candidate_entities.append(name)
+    claim_inventory_raw = result.get("claim_inventory") if isinstance(result, dict) else []
+    claim_inventory = [c for c in claim_inventory_raw if isinstance(c, dict)] if isinstance(claim_inventory_raw, list) else []
     return {
         "brief": document_outputs.get("brief", {}),
         "source": {
             "core_summary": source.get("core_summary", []),
-            "candidate_concepts": [],
-            "candidate_entities": [],
+            "candidate_concepts": candidate_concepts,
+            "candidate_entities": candidate_entities,
             "domains": domains,
             "knowledge_base_relation": source.get("knowledge_base_relation", []),
             "contradictions": source.get("contradictions", []),
             "reinforcements": source.get("reinforcements", []),
         },
+        "claim_inventory": claim_inventory,
     }
 
 
@@ -142,10 +291,15 @@ def build_delta_page_from_update_proposal_local(
     target_type = proposal.get("target_type", "").strip() if isinstance(proposal.get("target_type"), str) else "source"
     action = proposal.get("action", "").strip() if isinstance(proposal.get("action"), str) else "draft_delta"
     reason = proposal.get("reason", "").strip() if isinstance(proposal.get("reason"), str) else "待人工审核。"
-    confidence = proposal.get("confidence", "low")
+    confidence = proposal.get("confidence", "Preliminary")
     evidence = proposal.get("evidence", []) if isinstance(proposal.get("evidence"), list) else []
     patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
     claims = proposal.get("claims") if isinstance(proposal.get("claims"), list) else []
+    # Determine if this delta has actual draft content (for review queue prioritization)
+    summary_delta = patch.get("summary_delta", []) if isinstance(patch.get("summary_delta"), list) else []
+    content = patch.get("content", []) if isinstance(patch.get("content"), list) else []
+    questions_open = patch.get("questions_open", []) if isinstance(patch.get("questions_open"), list) else []
+    has_draft = bool(summary_delta or content or questions_open)
     slug = sanitize_filename(f"delta-{source_slug}-{Path(target_page).stem or target_type}")
     lines = [
         "---",
@@ -158,6 +312,7 @@ def build_delta_page_from_update_proposal_local(
         f'source_page: "wiki/sources/{source_slug}.md"',
         f'target_page: "{target_page}"',
         f'target_type: "{target_type}"',
+        f'has_draft: "{str(has_draft).lower()}"',
         "---",
         "",
         "# Delta Proposal",
@@ -197,9 +352,6 @@ def build_delta_page_from_update_proposal_local(
             wrote_claim = True
     if not wrote_claim:
         lines.append("- 待人工补充关键判断。")
-    summary_delta = patch.get("summary_delta", []) if isinstance(patch.get("summary_delta"), list) else []
-    content = patch.get("content", []) if isinstance(patch.get("content"), list) else []
-    questions_open = patch.get("questions_open", []) if isinstance(patch.get("questions_open"), list) else []
     lines.extend(["", "## 建议修改", ""])
     lines.extend(f"- {item}" for item in summary_delta[:6])
     lines.extend(f"- {item}" for item in content[:6])

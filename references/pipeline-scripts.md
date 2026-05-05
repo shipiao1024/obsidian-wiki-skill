@@ -42,6 +42,7 @@ What the primary orchestrator script does:
 - When v2 compile returns `cross_domain_insights`, includes cross-domain associative reasoning in the impact report (deep structural isomorphisms between new content's domain and existing vault domains).
 - After ingestion completes, emits an impact report via `pipeline/ingest_report.py` containing: brief link, content topics (prefer LLM `knowledge_proposals` over heuristic), content-derived questions (prefer LLM `open_questions` over heuristic), cross-domain insights, domain mismatch detection, compile quality status, and next-step suggestions.
 - Generates or updates a first-pass domain synthesis page in `wiki/syntheses/`.
+- After ingestion, rebuilds knowledge graph (Mermaid/HTML) and claim evolution page.
 - Updates `wiki/hot.md` with ingest context.
 - Rebuilds `wiki/index.md`.
 - Appends entries to `wiki/log.md`.
@@ -49,7 +50,7 @@ What the primary orchestrator script does:
 How to position this script:
 
 - This is the primary orchestrator for `fetch+heuristic` and `fetch+api-compile`.
-- It is not the only user-facing entrypoint; in the preferred workflow the host agent conversation is still the primary entrypoint.
+- It is not the only user-facing entrypoint; in the preferred workflow the you conversation is still the primary entrypoint.
 - When `raw/articles` + `wiki/sources` + `wiki/briefs` already exist for a slug, it skips that article unless `--force` is supplied.
 - Local file and plain text adapters are also supported through this same entrypoint.
 
@@ -68,7 +69,7 @@ python Claude-obsidian-wiki-skill\scripts\llm_compile_ingest.py `
   --vault "D:\Obsidian\MyVault" `
   --raw "D:\Obsidian\MyVault\raw\articles\<slug>.md" `
   --title "文章标题" `
-  --schema-version 2.0
+  --prepare-only --lean
 ```
 
 What the compile script does:
@@ -76,11 +77,9 @@ What the compile script does:
 - Reads the raw article and a small amount of related wiki context.
 - In `--prepare-only` mode, emits a compile context package for Codex/Claude interactive use.
 
-- `--lean` flag: strips `system_prompt` and `user_prompt` from the output payload, and filters noisy/corrupted synthesis excerpts. Reduces context payload by ~80% (from ~58KB to ~10KB). The host agent itself is an LLM and doesn't need these fields — they are designed for external API calls. The lean payload retains `metadata`, `context` (with `purpose`, `related_domains`, `related_sources`, `related_syntheses`, `detected_domains`, `pending_deltas`), and `expected_output_schema_version`. Stripped fields: `system_prompt`, `user_prompt`, `existing_source`, `existing_brief`. Synthesis excerpts matching ASR transcript noise patterns are blanked.
+- `--lean` flag: strips `system_prompt` and `user_prompt` from the output payload, and filters noisy/corrupted synthesis excerpts. Reduces context payload by ~80% (from ~58KB to ~10KB). The you itself is an LLM and doesn't need these fields — they are designed for external API calls. The lean payload retains `metadata`, `context` (with `purpose`, `related_domains`, `related_sources`, `related_syntheses`, `detected_domains`, `pending_deltas`), and `expected_output_schema_version`. Stripped fields: `system_prompt`, `user_prompt`, `existing_source`, `existing_brief`. Synthesis excerpts matching ASR transcript noise patterns are blanked.
 - In API mode, can call an OpenAI-compatible chat completion endpoint.
-- Supports `--schema-version 1.0|2.0`.
-- `1.0` returns structured `brief/source` JSON.
-- `2.0` returns wrapped compile output including `compile_target`、`document_outputs`、`knowledge_proposals`、`update_proposals`、`claim_inventory`、`open_questions`、`cross_domain_insights`、`stance_impacts`、`review_hints`.
+- Outputs v2.0 schema: wrapped compile output including `compile_target`、`document_outputs`、`knowledge_proposals`、`update_proposals`、`claim_inventory`、`open_questions`、`cross_domain_insights`、`stance_impacts`、`review_hints`.
 - Does not overwrite official pages by itself.
 - Supports a local mock JSON file through `WECHAT_WIKI_COMPILE_MOCK_FILE` for offline pipeline validation.
 
@@ -88,15 +87,15 @@ Recommended Codex/Claude interactive flow:
 
 ```text
 1. Run wiki_ingest.py to fetch the article into raw/
-2. Run llm_compile_ingest.py --prepare-only --lean --schema-version 2.0
+2. Run llm_compile_ingest.py --prepare-only --lean
 3. Let the current Codex/Claude conversation produce one structured JSON result
 4. Save that JSON locally
 5. Run apply_compiled_brief_source.py to write wiki/briefs and wiki/sources, and emit `delta-compile` drafts from `update_proposals`
 ```
 
-The `--lean` flag is recommended for host-agent mode: the agent doesn't need `system_prompt`/`user_prompt` (those are for external LLM APIs), and noisy synthesis excerpts are filtered out. Without `--lean`, the full payload (~58KB) is suitable for piping to an external OpenAI-compatible API.
+The `--lean` flag is recommended for LLM-first mode: you don't need `system_prompt`/`user_prompt` (those are for external LLM APIs), and noisy synthesis excerpts are filtered out. Without `--lean`, the full payload (~58KB) is suitable for piping to an external OpenAI-compatible API.
 
-In host-agent mode, the conversation should do the semantic work. The local scripts should remain responsible for context packaging, file writes, lint, and review workflows.
+In LLM-first mode, you do the semantic work. The local scripts should remain responsible for context packaging, file writes, lint, and review workflows.
 
 ## apply_compiled_brief_source.py
 
@@ -114,7 +113,14 @@ What the interactive apply script does:
 
 - Accepts a Codex/Claude-produced structured compile JSON.
 - Renders and writes `wiki/briefs/` and `wiki/sources/`.
+- `claim_inventory` is now propagated from compiled JSON through to page builder (no longer discarded in `to_legacy_compile_shape()`).
+- Brief/source pages include `## 关键判断` section rendering per-claim `[type|confidence]` format with `⚠️需验证` markers.
+- Frontmatter includes `claim_confidence_high/medium/low` counts alongside existing `confidence` field.
+- When `review_hints.needs_human_review=True` or source confidence is low with no high claims, pages are created with `lifecycle: "candidate"` instead of `lifecycle: "official"`.
+- Candidate pages display `[!warning] 候选页待审` callout and split claims into `## 关键判断` (high/medium) + `## 待验证判断` (low).
 - Refreshes taxonomy/synthesis scaffolding, preferring v2 proposal-driven `domains`.
+- Concept/entity pages inherit `lifecycle: "candidate"` from their source page when source is candidate.
+- After ingestion, rebuilds `wiki/claim-evolution.md` with reinforce/contradict/extend claim relationships.
 - Emits `wiki/outputs/*.md` `delta-compile` drafts from `update_proposals` instead of overwriting official pages directly.
 - Rebuilds `wiki/index.md` and appends a `compile_apply_v2` event to `wiki/log.md` when the payload is v2.
-- A sample host-agent result lives at `references/examples/agent_interactive_compiled_result.json`.
+- A sample LLM result lives at `references/examples/agent_interactive_compiled_result.json`.

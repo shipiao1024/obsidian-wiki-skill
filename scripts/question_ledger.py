@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pipeline.encoding_fix import fix_windows_encoding
 from pipeline.question import (
     write_question_page,
     update_question_status,
@@ -22,6 +23,7 @@ from pipeline.question import (
 
 
 def main() -> int:
+    fix_windows_encoding()
     parser = argparse.ArgumentParser(description="Manage the Question Ledger")
     sub = parser.add_subparsers(dest="command")
 

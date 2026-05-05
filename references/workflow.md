@@ -12,7 +12,7 @@
 
 ## 正式运行模式
 
-当前系统对外应只讲 3 种正式运行模式：
+当前系统对外应只讲 4 种正式运行模式：
 
 1. `fetch+heuristic`
 - 适合快速入库、未配置 LLM、或批量初抓。
@@ -20,10 +20,17 @@
 
 2. `fetch+prepare-only`
 - 适合在当前 Codex / Claude 对话里完成语义编译。
-- 结果是：先抓取并写入 `raw`，再生成 compile payload，由宿主 Agent 产出 JSON，再回写正式页。
-- 推荐使用 `--lean` 模式生成 payload，减少上下文占用 ~80%（移除宿主 Agent 不需要的 `system_prompt`/`user_prompt`，过滤乱码 synthesis excerpt）。完整 payload 适合管道到外部 API。
+- 结果是：先抓取并写入 `raw`，再生成 compile payload，由你 产出 JSON，再回写正式页。
+- 推荐使用 `--lean` 模式生成 payload，减少上下文占用 ~80%（移除你 不需要的 `system_prompt`/`user_prompt`，过滤乱码 synthesis excerpt）。完整 payload 适合管道到外部 API。
+- **当文档超过 800 行时自动切换为 chunked-prepare 模式**（见下方分块编译段落）。
 
-3. `fetch+api-compile`
+3. `fetch+chunked-prepare`
+- 适合长文档（书籍、PDF、ASR 转录）的分块深度精读。
+- 流程：自动分块 → 逐块提取 → 跨块综合 → V2.0 compile JSON
+- 手动指定：`--chunked --chunk-size 500`
+- 精读版 claim 数量是粗读版的 9 倍，揭示先验知识无法覆盖的关键论点
+
+4. `fetch+api-compile`
 - 适合无人值守或批处理。
 - 结果是：抓取后直接调用 OpenAI-compatible 接口生成结构化编译结果，再回写正式页。
 
@@ -234,6 +241,8 @@ wiki/questions/*.md
 wiki/stances/*.md
 wiki/comparisons/*.md
 wiki/outputs/*.md
+wiki/claim-evolution.md
+wiki/evolution.md
 ```
 
 - `sources/`：保真来源页。记录来源信息、关键论点、已成熟概念/实体、候选概念/实体、与知识库的关系。
@@ -247,7 +256,7 @@ wiki/outputs/*.md
 - `comparisons/`：结构化对比页（A vs B），包含对比维度、双方优势、综合判断、相关来源。
 - `outputs/`：查询或专题任务生成的临时工作产物与待复核草稿，不是正式知识层。
 - 当前 ingest 会自动维护最小 `syntheses/` 页，但 `outputs/` 仍然留给 query 流程回写。
-- 对于安装到 Codex / Claude Code 的主工作流，推荐由宿主 Agent 负责“阅读上下文并生成结构化编译结果”，脚本只负责准备上下文与回写文件。
+- 对于安装到 Codex / Claude Code 的主工作流，推荐由你 负责“阅读上下文并生成结构化编译结果”，脚本只负责准备上下文与回写文件。
 
 ## 每篇文章的最低产物
 
@@ -266,6 +275,58 @@ wiki/outputs/*.md
 8. `wiki/domains/*.md`
 9. `wiki/syntheses/*.md`
 
+---
+
+## 分块编译模式（V1.3.0）
+
+### 适用场景
+
+当文档超过 800 行时，系统自动切换为 `chunked-prepare` 模式。适用于：
+- PDF 书籍（通常 5000+ 行）
+- 长知乎文章
+- ASR 转录（1000-1500 行）
+
+### 流程
+
+```
+Long Document → chunk_raw_document() → Per-chunk extraction (LLM) → Cross-chunk synthesis → V2.0 compile JSON
+```
+
+### 架构隔离
+
+分块逻辑在后端（raw 文件层面）操作，与前端来源类型完全解耦。所有 7 种来源类型的长文档都已覆盖：
+- 7 种前端 adapter 统一输出 `Article(text, title, ...)` → `raw/{slug}.md`
+- `chunk_raw_document()` 操作 raw 文件，不受来源类型影响
+- 唯一需要补充的是自动分块阈值判断（已实现：>800 行自动切换）
+
+### 参数
+
+- `--chunked`：手动指定分块模式
+- `--chunk-size N`：每 chunk 最大行数（默认 500）
+
+### 精读 vs 粗读效果
+
+精读版 claim 数量是粗读版的 9 倍，且揭示 8+ 个先验知识无法覆盖的关键论点/案例。
+
+---
+
+## V2.0 Compile JSON 自动修正（V1.3.0）
+
+apply 脚本在加载 V2.0 compile JSON 时自动修正常见 LLM 生成偏差：
+
+| 常见错误 | 自动修正 |
+|---------|---------|
+| `schema_version` 在 `metadata` 内 | 移到 JSON 顶层 |
+| `key_points` 在 `skeleton` 内 | 移到 `brief` 内 |
+| `source` 在 `brief` 内 | 移到 `document_outputs` 内 |
+| `claim_inventory` 在 `document_outputs` 内 | 提升到 `result` 顶层 |
+| `evidence_type` 自定义值 | 映射到 6 个合法枚举 |
+| `stance_impacts.impact` 描述文字 | 映射到 4 个合法枚举 |
+| `open_questions` 对象 | 提取 `.question`/.text` 转为字符串 |
+| `skeleton` 为纯字符串 | 包装为 `{generators, diagram}` 结构 |
+
+每次修正写入 stderr，格式 `[auto-correct] Moved schema_version to top level` 等。
+
 这些页面是启发式草稿，不应视为最终高质量知识页面。`syntheses/` 目前是按命中的 domain 自动生成的最小汇总页，用来承接后续跨来源对比。
 
 当 v2 compile 返回 `comparisons` 时，还会自动创建：
@@ -280,7 +341,7 @@ v2 compile 完整产出包含以下字段：
 |------|------|
 | `compile_target` | 编译目标元信息（vault、raw_path、slug、title、author、date） |
 | `document_outputs` | brief（one_sentence、key_points）+ source（core_summary、contradictions、reinforcements） |
-| `knowledge_proposals` | domains / concepts / entities 各带 action（link_existing、create_candidate、no_page 等）和 confidence |
+| `knowledge_proposals` | domains / concepts / entities 各带 action（link_existing、create_candidate、no_page 等）和 confidence（内部字段，不在入库输出中展示） |
 | `update_proposals` | 对已有页面的更新建议 |
 | `claim_inventory` | 核心论断清单，含 claim_type、confidence、verification_needed |
 | `open_questions` | 内容衍生的可追踪问题（LLM 编译优先使用，启发式回退到 `extract_content_questions`） |
@@ -293,8 +354,9 @@ v2 compile 完整产出包含以下字段：
 - `mapped_concept`：新内容中的概念名
 - `target_domain`：知识库中最可能产生联想的现有领域名
 - `bridge_logic`：一句话类比/同构逻辑——为什么这个跨域联想有价值
+- `migration_conclusion`：从源域推断目标域的可行动判断（必填，无此字段则跨域联想不展示）
 - `potential_question`：从跨域关联生成的可追踪问题
-- `confidence`：high / medium / low
+- `confidence`：high / medium / low（内部字段，不在入库输出中展示）
 
 同构类型：
 - **方法论迁移**：A 领域的方法可适用于 B 领域
@@ -366,17 +428,7 @@ python Claude-obsidian-wiki-skill\scripts\export_main_graph.py `
 
 ## 快读页建议结构
 
-```markdown
-# 标题
-
-## 一句话结论
-
-## 核心要点
-- 3-7 条
-
-## 适合谁读
-
-## 值得回看
+快读页（brief）的内部结构由 compile schema 定义（skeleton.generators、key_points、data_points 等）。入库完成后向用户展示的格式见 `ingest-quickstart.md` 的"入库完成必选输出"模板——直接引用骨架和关键判断原文，不拆子维度，不展示置信度分布。
 
 ## 原文入口
 ```
@@ -399,7 +451,8 @@ python Claude-obsidian-wiki-skill\scripts\export_main_graph.py `
 
 | Status | 含义 | 自动升级触发条件 |
 |--------|------|-----------------|
-| `seed` | 初始草稿，单来源占位 | 默认值，创建时设置 |
+| `candidate` | 低置信判断，需人工审核或多来源确认 | `needs_human_review=True` 或 `confidence=low` 且无 high 主张 |
+| `seed` | 初始草稿，单来源占位 | 默认值（official 页），或 candidate 被 2+ 来源确认后升级 |
 | `developing` | 多来源开始引用，正在形成稳定认知 | `page_mention_count >= 1` |
 | `mature` | 稳定、定义清晰、多来源支撑 | `page_mention_count >= 3` |
 | `evergreen` | 持续维护、始终相关 | `page_mention_count >= 6` |
@@ -409,6 +462,35 @@ python Claude-obsidian-wiki-skill\scripts\export_main_graph.py `
 - 过渡期兼容：`"draft"` 等同 `"seed"`。
 - 查询时 `mature`/`evergreen` 页面排名权重更高（score +2/+1）。
 - `wiki_lint.py` 检查 `status_mismatch`：状态与引用数不一致时报告。
+
+### 页面生命周期（lifecycle）
+
+所有 wiki 页面携带 `lifecycle` frontmatter 字段，控制页面可见度和审核状态：
+
+| Lifecycle | 含义 | 适用页面类型 |
+|-----------|------|-------------|
+| `official` | 正式知识页面，进入主导航 | 所有通过置信度门控的 brief/source/concept/entity |
+| `candidate` | 待审核页面，不进入主导航 | 低置信来源页及其关联 concept/entity |
+| `temporary` | 临时工作产物 | query output |
+| `review-needed` | 待复核草稿 | delta-compile output |
+| `absorbed` | 已吸收为正式知识 | 被 apply_approved_delta 处理后的 output |
+| `archived` | 已归档，不再活跃 | 被 archive_outputs 处理后的 output |
+
+- `candidate` → `official` 的升级条件：2+ 来源含 high 置信主张提及该概念/实体时，`check_and_upgrade_status()` 自动升级。
+- candidate 页面顶部显示 `[!warning] 候选页待审` callout，提醒引用时标注置信度。
+- candidate 页面的主张分为 `## 关键判断`（high/medium）和 `## 待验证判断`（low），隔离低置信内容。
+- `review_queue.py` 专门列出候选页待审、可升级候选页和低置信判断。
+
+### 置信度传播机制
+
+v2 compile 产出 `claim_inventory`，每条主张含 `claim_type`、`confidence`（high/medium/low）、`verification_needed`。置信度数据在管线中传播（内部机制，不在入库完成输出中展示）：
+
+1. **apply 层穿透**：`claim_inventory` 从 compiled JSON 传递到 page builder，不再在 `to_legacy_compile_shape()` 中丢弃。
+2. **brief/source 渲染**：`## 关键判断` 段以 `[type|confidence] claim` 格式渲染，frontmatter 增加 `claim_confidence_high/medium/low` 计数。
+3. **lifecycle 门控**：`review_hints.needs_human_review=True` 或 `confidence=low` 且无 high 主张 → `lifecycle: "candidate"`；否则 `lifecycle: "official"`。
+4. **synthesis 投影**：`refresh_synthesis.py` 从 source 页的 `## 关键判断` 段提取主张，按置信度加权评分（high=6, medium=3, low=1），生成综合页的"当前结论"和"核心判断"。无主张时 fallback 到 raw 句子评分。
+5. **演化追踪**：`claim_evolution.py` 用关键词重叠匹配跨来源主张，分类为 reinforce/contradict/extend。矛盾主张进入 `review_queue.py` 的 `## 矛盾主张` 段。
+6. **路径分层**：candidate 页低置信主张隔离到 `## 待验证判断`；official 页所有主张在同一段。concept/entity 页从来源页继承 candidate lifecycle。
 
 ### autoresearch 模式
 
@@ -451,7 +533,7 @@ python Claude-obsidian-wiki-skill\scripts\export_main_graph.py `
 
 推荐交互式主流程：
 
-1. `wiki_ingest_wechat.py` 抓取并写入 `raw`
+1. `wiki_ingest.py` 抓取并写入 `raw`
 2. `llm_compile_ingest.py --prepare-only --lean` 输出精简编译上下文（推荐；不加 `--lean` 则输出完整 payload，适合管道到外部 API）
 3. 当前 Codex / Claude 会话基于该上下文生成 JSON
 4. `apply_compiled_brief_source.py` 把 JSON 回写为正式 `brief/source`
@@ -462,16 +544,16 @@ python Claude-obsidian-wiki-skill\scripts\export_main_graph.py `
 - `user_prompt`
 - `expected_output_schema`
 
-也就是 `llm_compile_ingest.py --prepare-only` 输出 payload 里的三个字段（`system_prompt`、`user_prompt`、`expected_output_schema`）。使用 `--lean` 时这三个字段被移除，宿主 Agent 只需读取 `context` 部分。首次调试时，可以先参照 `references/examples/agent_interactive_compiled_result.json`。
+也就是 `llm_compile_ingest.py --prepare-only` 输出 payload 里的三个字段（`system_prompt`、`user_prompt`、`expected_output_schema`）。使用 `--lean` 时这三个字段被移除，你 只需读取 `context` 部分。首次调试时，可以先参照 `references/examples/agent_interactive_compiled_result.json`。
 
 在 Windows PowerShell 下，如果要把 `--prepare-only` 输出落成文件，建议使用 `Out-File -Encoding utf8`，避免后续读取 payload 时出现编码问题。
 
 这样：
 
 - skill 的入口仍然是 Codex / Claude 交互界面
-- Python 脚本只做辅助，不抢走宿主 Agent 的 LLM 角色
+- Python 脚本只做辅助，不抢走你 的 LLM 角色
 - 外部 API 只作为后备路径
-- `wiki_ingest_wechat.py` 是默认脚本入口，但不是默认用户入口
+- `wiki_ingest.py` 是默认脚本入口，但不是默认用户入口
 - 这个脚本名字保留了历史焦点，但当前实际已经承担多来源 URL 入口
 
 ## Query 与 Lint 约定
@@ -539,10 +621,16 @@ python Claude-obsidian-wiki-skill\scripts\apply_approved_delta.py `
 ## 审核队列
 
 - 运行 `review_queue.py --write` 会生成 `wiki/review_queue.md`。
-- 这个页面只聚焦两类内容：
-  - `review-needed`
-  - `temporary`
-- 当前还会额外列出 `quality: low` 的 `source` 页，归入 `低质量来源候选`。
+- 页面结构包含以下段：
+  - `冲突候选`：`wiki_lint.py` 检测到的矛盾主张对应的 output
+  - `低质量来源候选`：`quality: low` 的 source 页
+  - `待处理`：`lifecycle: review-needed` 或 `temporary` 的 output
+  - `重复候选`：同标题的重复 output
+  - `已吸收统计`：absorbed/archived/pending 数量
+  - `候选页待审`：`lifecycle: candidate` 的 brief/source 页
+  - `低置信判断`：confidence=low 的主张（从 sources/briefs 的 `## 关键判断` 段提取）
+  - `可升级候选页`：满足 2+ 来源确认阈值的 candidate concept/entity 页
+  - `矛盾主张`：`claim_evolution.py` 检测到的跨来源矛盾主张对
 - `absorbed` 历史草稿不再混进待处理清单，只保留数量统计和审计痕迹。
 - 对于同标题的重复测试草稿，可运行 `archive_outputs.py --apply`，只保留最新未吸收的一份，其余标记为 `archived`。
 

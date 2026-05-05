@@ -19,8 +19,9 @@
 - 通用网页 URL：`baoyu-url-to-markdown`
 - YouTube / Bilibili URL：`yt-dlp`，无字幕时再加 `faster-whisper`
 - 抖音 URL：`yt-dlp`，cookie 失败时浏览器兜底需 `Node.js` + `playwright`
+- 本地文档（DOCX/PPTX/XLSX/EPUB）：`markitdown` + `pandas` + `openpyxl` + `ebooklib` + `beautifulsoup4`
 
-推荐再按“必装 / 按需装”区分：
+推荐再按”必装 / 按需装”区分：
 
 - 必装
   - `wechat-article-for-ai`
@@ -33,6 +34,8 @@
   - `faster-whisper`
 - 抖音视频浏览器兜底按需装
   - `Node.js` + `playwright`（npm 包）
+- 文档格式归一化按需装
+  - `markitdown` + `pandas` + `openpyxl` + `ebooklib` + `beautifulsoup4`
 
 ## 前置条件
 
@@ -111,7 +114,7 @@ Vault 选择的优先链：
 4. 旧版 `vault.conf` 单行路径（向后兼容）
 5. Obsidian `obsidian.json` 自动发现（兜底）
 
-当内容被自动路由到非默认 vault 时，`wiki_ingest.py` 输出 `Auto-routed to vault: <path> (matched domains: ...)` 到 stderr，宿主 Agent 应据此选择后续操作的目标 vault。
+当内容被自动路由到非默认 vault 时，`wiki_ingest.py` 输出 `Auto-routed to vault: <path> (matched domains: ...)` 到 stderr，你应据此选择后续操作的目标 vault。
 
 手动覆盖示例：
 
@@ -189,7 +192,7 @@ python scripts/check_deps.py --install --group=wechat
 python scripts/check_deps.py --install --group=video
 ```
 
-依赖分组：`core`（Python/Git）、`wechat`（微信公众号）、`video`（视频）、`video_asr`（无字幕 ASR）、`pdf`（本地 PDF）、`web`（通用网页）、`test`（测试套件）。
+依赖分组：`core`（Python/Git）、`wechat`（微信公众号）、`video`（视频）、`video_asr`（无字幕 ASR）、`pdf`（本地 PDF）、`format_normalization`（DOCX/PPTX/XLSX/EPUB 格式归一化）、`web`（通用网页）、`test`（测试套件）。
 
 单独安装 Camoufox 浏览器（中国网络可能需要单独处理）：
 
@@ -327,6 +330,37 @@ $env:KWIKI_NODE_BIN = "D:\node\node.exe"
 | 步骤 | 标准路径 | 中国镜像路径 |
 |------|---------|------------|
 | 安装 pypdf | `pip install pypdf` | `pip install pypdf -i https://pypi.tuna.tsinghua.edu.cn/simple` |
+
+#### 格式归一化（按需安装）
+
+DOCX / PPTX / XLSX / EPUB 文件入库需要以下依赖。未安装时，这些格式的文件将无法入库。
+
+| 步骤 | 标准路径 | 中国镜像路径 |
+|------|---------|------------|
+| 安装全部格式归一化依赖 | `pip install markitdown pandas openpyxl ebooklib beautifulsoup4` | `pip install markitdown pandas openpyxl ebooklib beautifulsoup4 -i https://pypi.tuna.tsinghua.edu.cn/simple` |
+
+各包用途：
+- `markitdown`：DOCX/PPTX → Markdown（Microsoft 出品）
+- `pandas` + `openpyxl`：XLSX/XLS 表格 → Markdown
+- `ebooklib` + `beautifulsoup4`：EPUB 电子书 → Markdown
+
+快速安装（使用 check_deps.py）：
+
+```powershell
+python scripts/check_deps.py --install --group=format_normalization
+python scripts/check_deps.py --install --group=format_normalization --china
+```
+
+### PDF 生成（Brief / Deep Research 报告导出）
+
+Brief 和 Deep Research 报告的 PDF 导出功能由 `scripts/md_to_pdf.py` 提供（Playwright + Chrome 渲染），由 `scripts/pipeline/pdf_utils.py` 内部调用。用户无需直接接触该脚本。
+
+| 步骤 | 标准路径 | 中国镜像路径 |
+|------|---------|------------|
+| 安装 Python 包 | `pip install markdown playwright` | `pip install markdown playwright -i https://pypi.tuna.tsinghua.edu.cn/simple` |
+| 安装 Chromium | `playwright install chromium` | `playwright install chromium` |
+
+> **注意**：这里的 `playwright` 是 Python 包（PDF 渲染），与抖音视频浏览器兜底使用的 Node.js `playwright` 是两个独立依赖。
 
 ### 环境变量设置
 

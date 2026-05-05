@@ -13,7 +13,7 @@ sub_skills:
 
   - id: query
     name: Query
-    description: Query the wiki with one of 8 output modes (brief, briefing, draft-context, contradict, digest, essay, reading-list, talk-track).
+    description: Query the wiki with one of 9 output modes (brief, briefing, draft-context, contradict, digest, essay, reading-list, talk-track, deep-research). Briefing mode uses 4-dimension cognitive framework (骨架·数据·推演·失效信号).
     references:
       - references/query-scripts.md
 

@@ -9,6 +9,7 @@ scripts/cookies.txt
 .runtime-fetch/
 scripts/.runtime-fetch/
 .tmp-tests/
+test_report.xml
 tmpod*/
 __pycache__/
 *.pyc
@@ -31,6 +32,7 @@ __pycache__/
 *.log
 
 # === Nested git metadata ===
+.tools/
 .tools/wechat-article-for-ai/.git/
 
 # === OS artifacts ===

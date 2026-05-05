@@ -13,7 +13,13 @@ from .shared import (
 STANCE_DIR = "wiki/stances"
 
 VALID_STANCES = ("active", "challenged", "abandoned")
-VALID_CONFIDENCES = ("high", "medium", "low")
+VALID_ORDINAL_CONFIDENCES = ("Seeded", "Preliminary", "Working", "Supported", "Stable")
+_ORDINAL_DOWN = {
+    "Stable": "Supported",
+    "Supported": "Working",
+    "Working": "Preliminary",
+    "Preliminary": "Seeded",
+}
 VALID_IMPACTS = ("reinforce", "contradict", "extend", "neutral")
 
 
@@ -28,7 +34,7 @@ def build_stance_page(
     *,
     topic: str,
     core_judgement: str = "",
-    confidence: str = "medium",
+    confidence: str = "Working",
     status: str = "active",
     supporting_evidence: list[str] = [],
     contradicting_evidence: list[str] = [],
@@ -90,7 +96,7 @@ def write_stance_page(
     *,
     topic: str,
     core_judgement: str = "",
-    confidence: str = "medium",
+    confidence: str = "Working",
     status: str = "active",
     supporting_evidence: list[str] = [],
     contradicting_evidence: list[str] = [],
@@ -149,15 +155,16 @@ def apply_stance_impact(
     meta["source_count"] = str(current_count + 1)
     meta["last_updated"] = today
 
-    # Adjust confidence on contradict
-    current_confidence = meta.get("confidence", "medium")
+    # Adjust confidence on contradict (ordinal downgrade)
+    current_confidence = meta.get("confidence", "Working")
     if impact == "contradict":
-        if current_confidence == "high":
-            meta["confidence"] = "medium"
-            meta["status"] = "active"
-        elif current_confidence == "medium":
-            meta["confidence"] = "low"
-            meta["status"] = "challenged"
+        downgraded = _ORDINAL_DOWN.get(current_confidence)
+        if downgraded:
+            meta["confidence"] = downgraded
+            if downgraded in ("Seeded", "Preliminary"):
+                meta["status"] = "challenged"
+            else:
+                meta["status"] = "active"
 
     # Rebuild frontmatter
     fm_lines = ["---"]
@@ -204,7 +211,7 @@ def scan_active_stances(vault: Path) -> list[dict[str, str]]:
             stances.append({
                 "slug": page.stem,
                 "title": meta.get("title", page.stem),
-                "confidence": meta.get("confidence", "medium"),
+                "confidence": meta.get("confidence", "Working"),
                 "status": status,
                 "source_count": int(meta.get("source_count", "0")),
             })

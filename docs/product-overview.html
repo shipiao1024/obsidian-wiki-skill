@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Obsidian Wiki Skill — 产品概述 V1.3.0</title>
+<style>
+  :root {
+    --bg: #0f1117; --bg2: #161822; --bg3: #1c1f2e;
+    --text: #e2e4ed; --text2: #8b8fa3;
+    --accent: #6c5ce7; --accent2: #a29bfe;
+    --raw: #e17055; --wiki: #00b894;
+    --concept: #4A90D9; --entity: #7B68EE; --source: #2ECC71; --synthesis: #E67E22; --brief: #95A5A6;
+    --card-bg: #222640; --border: #2d3148; --glow: rgba(108,92,231,0.15);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { font-family:-apple-system,"SF Pro Display","Segoe UI","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.7; overflow-x:hidden; }
+
+  /* ---- SLIDE BASE ---- */
+  .slide { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+  .slide-inner { width:100%; max-width:1200px; padding:0 64px; position:relative; z-index:2; }
+  nav { position:fixed; top:0; left:0; right:0; z-index:100; background:rgba(15,17,23,0.85); backdrop-filter:blur(16px); border-bottom:1px solid var(--border); }
+  nav .inner { max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:48px; padding:0 64px; }
+  nav .logo { font-weight:700; font-size:14px; color:var(--accent2); letter-spacing:0.5px; }
+  nav a { color:var(--text2); text-decoration:none; font-size:12px; margin-left:24px; transition:color 0.2s; }
+  nav a:hover { color:var(--text); }
+
+  /* compact header for content slides */
+  .slide-header { margin-bottom:16px; }
+  .slide-label { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:var(--accent2); margin-bottom:4px; font-weight:600; }
+  .slide-title { font-size:clamp(20px,2.5vw,28px); font-weight:700; margin-bottom:4px; }
+  .slide-desc { font-size:13px; color:var(--text2); max-width:600px; }
+
+  .fade-in { opacity:0; transform:translateY(16px); transition:opacity 0.5s ease, transform 0.5s ease; }
+  .fade-in.visible { opacity:1; transform:translateY(0); }
+  .scroll-hint { position:absolute; bottom:28px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--text2); font-size:11px; opacity:0.6; animation:bounce 2s infinite; }
+  @keyframes bounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(5px)} }
+
+  /* ---- HERO ---- */
+  .hero-slide { text-align:center; flex-direction:column; }
+  .hero-slide::before { content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:600px; background:radial-gradient(circle,rgba(108,92,231,0.1) 0%,transparent 65%); pointer-events:none; }
+  .hero-badge { display:inline-block; padding:4px 14px; border-radius:20px; background:rgba(108,92,231,0.1); border:1px solid rgba(108,92,231,0.25); font-size:11px; color:var(--accent2); margin-bottom:20px; letter-spacing:1.5px; }
+  .hero-slide h1 { font-size:clamp(30px,4vw,46px); font-weight:800; line-height:1.2; margin-bottom:12px; background:linear-gradient(135deg,#e2e4ed 30%,var(--accent2) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero-sub { font-size:15px; color:var(--text2); max-width:560px; margin:0 auto 24px; line-height:1.7; }
+  .hero-layers { display:flex; gap:14px; justify-content:center; align-items:center; margin-bottom:20px; }
+  .hero-layer { padding:10px 24px; border-radius:10px; font-size:13px; font-weight:600; }
+  .hero-layer.raw { background:rgba(225,112,85,0.08); border:1px solid rgba(225,112,85,0.25); color:var(--raw); }
+  .hero-layer.wiki { background:rgba(0,184,148,0.08); border:1px solid rgba(0,184,148,0.25); color:var(--wiki); }
+  .hero-arrow { color:var(--text2); font-size:16px; }
+  .hero-principles { display:flex; gap:16px; justify-content:center; margin-top:20px; flex-wrap:wrap; }
+  .hero-principle { padding:8px 16px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); font-size:11px; color:var(--text2); }
+  .hero-principle strong { color:var(--text); }
+  .hero-karpathy { margin-top:20px; font-size:11px; color:var(--text2); }
+  .hero-karpathy a { color:var(--accent2); text-decoration:none; }
+
+  /* ---- THREE-STAGE PATTERN ---- */
+  .three-stage { display:flex; align-items:center; justify-content:center; gap:0; margin:24px 0; }
+  .stage-box { padding:14px 22px; border-radius:10px; text-align:center; min-width:180px; }
+  .stage-box.script { background:rgba(225,112,85,0.06); border:1px solid rgba(225,112,85,0.2); }
+  .stage-box.llm { background:rgba(108,92,231,0.08); border:1px solid rgba(108,92,231,0.25); }
+  .stage-box h4 { font-size:12px; font-weight:700; margin-bottom:3px; }
+  .stage-box.script h4 { color:var(--raw); }
+  .stage-box.llm h4 { color:var(--accent2); }
+  .stage-box p { font-size:10px; color:var(--text2); line-height:1.5; }
+  .stage-arrow { color:var(--text2); font-size:18px; margin:0 8px; }
+
+  /* ---- ARCHITECTURE DIAGRAM (compact) ---- */
+  .arch-full { position:relative; }
+  .arch-inputs { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin-bottom:8px; }
+  .arch-flow { display:flex; align-items:stretch; gap:0; margin-bottom:12px; }
+  .arch-col { flex:1; padding:12px 14px; border:1px solid var(--border); background:var(--bg2); position:relative; }
+  .arch-col:first-child { border-radius:10px 0 0 10px; }
+  .arch-col:last-child { border-radius:0 10px 10px 0; }
+  .arch-col + .arch-col { border-left:none; }
+  .arch-col-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:5px; }
+  .arch-col-title .dot { width:7px; height:7px; border-radius:50%; }
+  .arch-item { padding:3px 9px; border-radius:5px; font-size:11px; font-weight:500; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); white-space:nowrap; }
+  .arch-item.highlight { border-color:var(--accent); background:rgba(108,92,231,0.06); }
+  .arch-arrow-col { display:flex; align-items:center; justify-content:center; width:28px; flex-shrink:0; color:var(--text2); font-size:14px; }
+  .arch-bottom { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .arch-output { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
+  .arch-output h4 { font-size:11px; font-weight:700; margin-bottom:3px; color:var(--accent2); }
+  .arch-output p { font-size:10px; color:var(--text2); line-height:1.5; }
+  .arch-output .items { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:6px; }
+  .arch-output .items span { font-size:9px; padding:2px 5px; border-radius:3px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
+  .arch-label-arrow { text-align:center; color:var(--text2); font-size:12px; margin:6px 0; }
+
+  /* ---- PROMPT TABLE ---- */
+  .prompt-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px; }
+  .prompt-card { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; transition:border-color 0.3s; }
+  .prompt-card:hover { border-color:var(--accent); }
+  .prompt-card h5 { font-size:11px; font-weight:700; color:var(--accent2); margin-bottom:2px; }
+  .prompt-card p { font-size:9px; color:var(--text2); line-height:1.4; }
+
+  /* ---- SEQUENCE DIAGRAM ---- */
+  .seq-container { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px; overflow:auto; position:relative; }
+  .seq-container svg { display:block; width:100%; height:auto; }
+  .mermaid { font-family:inherit; }
+  .mermaid .actor-line { stroke:var(--accent) !important; stroke-width:1.5px !important; }
+  .mermaid .messageLine0 { stroke:var(--text2) !important; }
+  .mermaid .note { fill:var(--bg3) !important; stroke:var(--border) !important; }
+  .mermaid .activation0, .mermaid .activation1, .mermaid .activation2 { fill:var(--bg3) !important; stroke:var(--accent) !important; }
+
+  /* ---- FEATURES ---- */
+  .features-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .f-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px 14px; transition:border-color 0.3s, transform 0.2s; }
+  .f-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .f-icon { font-size:20px; margin-bottom:6px; }
+  .f-card h4 { font-size:12px; font-weight:700; margin-bottom:3px; }
+  .f-card p { font-size:10px; color:var(--text2); line-height:1.5; }
+  .f-tag { display:inline-block; margin-top:5px; padding:2px 7px; border-radius:5px; font-size:9px; font-weight:600; background:rgba(108,92,231,0.1); color:var(--accent2); }
+  .f-highlight { border-color:var(--accent) !important; background:linear-gradient(135deg,rgba(108,92,231,0.08) 0%,rgba(162,155,254,0.04) 100%) !important; }
+  .f-highlight .f-icon { font-size:24px; }
+
+  /* ---- VALUE ---- */
+  .value-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .v-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:18px 16px; display:flex; gap:10px; transition:border-color 0.3s; }
+  .v-card:hover { border-color:var(--accent); }
+  .v-num { flex-shrink:0; width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; background:rgba(108,92,231,0.1); color:var(--accent2); }
+  .v-card h4 { font-size:12px; font-weight:700; margin-bottom:2px; }
+  .v-card p { font-size:10px; color:var(--text2); line-height:1.5; }
+
+  /* ---- FOOTER ---- */
+  .footer-slide { flex-direction:column; text-align:center; }
+  .footer-slide h2 { font-size:clamp(26px,3vw,38px); font-weight:800; margin-bottom:10px; background:linear-gradient(135deg,#e2e4ed 30%,var(--accent2) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .footer-slide p { color:var(--text2); font-size:13px; }
+
+  @media (max-width:900px) {
+    .slide-inner { padding:0 28px; }
+    .arch-flow { flex-direction:column; }
+    .arch-arrow-col { transform:rotate(90deg); height:28px; }
+    .arch-bottom { grid-template-columns:1fr 1fr; }
+    .features-grid { grid-template-columns:1fr 1fr; }
+    .value-grid { grid-template-columns:1fr; }
+    .prompt-grid { grid-template-columns:1fr 1fr; }
+    .hero-principles { flex-direction:column; align-items:center; }
+    .three-stage { flex-direction:column; }
+    .stage-arrow { transform:rotate(90deg); }
+    nav .inner { padding:0 28px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <span class="logo">Obsidian Wiki Skill</span>
+    <div>
+      <a href="#s1">概述</a>
+      <a href="#s2">架构</a>
+      <a href="#s3">三阶段模式</a>
+      <a href="#s4b">分块精读</a>
+      <a href="#s6">能力</a>
+      <a href="#s7">价值</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ==================== SLIDE 1: HERO + PHILOSOPHY ==================== -->
+<section class="slide hero-slide" id="s1">
+  <div class="slide-inner">
+    <div class="hero-badge">V1.3.0 &middot; Chunked Deep-Reading &middot; Schema Auto-Correction &middot; 8 Prompt Constraints</div>
+    <h1>把外部知识编译进 Obsidian<br>构建个人知识操作系统</h1>
+    <p class="hero-sub">不是做一次性摘要——每次入库，整个知识库产生新的连接、新的问题、新的视角。写入成本可见，读出价值更可见。</p>
+    <div class="hero-layers">
+      <div class="hero-layer raw">raw/ &ensp;不可变原始证据</div>
+      <div class="hero-arrow">&rarr;</div>
+      <div class="hero-layer wiki">wiki/ &ensp;AI 编译知识层</div>
+    </div>
+    <div class="hero-principles">
+      <div class="hero-principle"><strong>两层证据</strong> &ensp;raw 不可变 / wiki 可演化</div>
+      <div class="hero-principle"><strong>LLM 优先</strong> &ensp;LLM 做判断，脚本做 I/O</div>
+      <div class="hero-principle"><strong>三阶段模式</strong> &ensp;脚本收集 → LLM 判断 → 脚本执行</div>
+      <div class="hero-principle"><strong>Prompt 约束</strong> &ensp;10 份结构化约束文件</div>
+      <div class="hero-principle"><strong>成熟度门槛</strong> &ensp;&ge;2 来源引用才建页</div>
+      <div class="hero-principle"><strong>风险分级</strong> &ensp;Low 自动 / Medium 展示 / High 确认</div>
+    </div>
+    <p class="hero-karpathy">设计思想参考 <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">Karpathy llm-wiki</a>：ingest 是编译而不是归档</p>
+  </div>
+  <div class="scroll-hint"><span>&#8595;</span> 向下滚动</div>
+</section>
+
+<!-- ==================== SLIDE 2: UNIFIED ARCHITECTURE ==================== -->
+<section class="slide" id="s2">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="slide-label">System Architecture</div>
+      <div class="slide-title">全貌架构</div>
+      <div class="slide-desc">输入 &rarr; 五阶段流水线 &rarr; 知识层 &rarr; 多形态输出 &ensp;|&ensp; 脚本是手和脚，LLM 是大脑</div>
+    </div>
+    <div class="arch-full fade-in">
+      <!-- Input sources -->
+      <div class="arch-inputs">
+        <div class="arch-item" style="border-color:var(--raw);">微信公众号</div>
+        <div class="arch-item" style="border-color:var(--raw);">网页</div>
+        <div class="arch-item" style="border-color:var(--raw);">YouTube / B站 / 抖音</div>
+        <div class="arch-item" style="border-color:var(--raw);">PDF / DOCX / PPTX / XLSX</div>
+        <div class="arch-item" style="border-color:var(--raw);">Markdown / 纯文本</div>
+      </div>
+      <div class="arch-label-arrow">&darr; 域优先路由</div>
+
+      <!-- Pipeline + Knowledge Layer + Systems -->
+      <div class="arch-flow">
+        <div class="arch-col" style="flex:1.2;">
+          <div class="arch-col-title"><div class="dot" style="background:var(--accent)"></div> 五阶段流水线</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div class="arch-item highlight">1. Fetch + 格式归一化</div>
+            <div class="arch-item highlight">2. Ingest &rarr; raw/</div>
+            <div class="arch-item highlight">3. Two-Step CoT Compile</div>
+            <div class="arch-item highlight">4. Risk-Graded Apply &rarr; wiki/</div>
+            <div class="arch-item highlight">5. LLM 影响分析 + PDF</div>
+          </div>
+        </div>
+        <div class="arch-arrow-col">&rarr;</div>
+        <div class="arch-col" style="flex:2;">
+          <div class="arch-col-title"><div class="dot" style="background:var(--wiki)"></div> 知识层 wiki/</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+            <div class="arch-item" style="border-color:var(--brief)">briefs/ + PDF</div>
+            <div class="arch-item" style="border-color:var(--source)">sources/</div>
+            <div class="arch-item" style="border-color:var(--concept)">concepts/</div>
+            <div class="arch-item" style="border-color:var(--entity)">entities/</div>
+            <div class="arch-item" style="border-color:var(--synthesis)">syntheses/</div>
+            <div class="arch-item">domains/</div>
+            <div class="arch-item">questions/</div>
+            <div class="arch-item">stances/</div>
+            <div class="arch-item">comparisons/</div>
+            <div class="arch-item" style="border-color:var(--accent)">research/ + PDF</div>
+          </div>
+        </div>
+        <div class="arch-arrow-col">&rarr;</div>
+        <div class="arch-col" style="flex:1;">
+          <div class="arch-col-title"><div class="dot" style="background:var(--synthesis)"></div> 自动化系统</div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div class="arch-item">知识图谱 Mermaid</div>
+            <div class="arch-item">域子图页面</div>
+            <div class="arch-item">主张演化（LLM 驱动）</div>
+            <div class="arch-item">深度研究触发</div>
+            <div class="arch-item">5 项质量门控</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outputs -->
+      <div class="arch-label-arrow">&darr; 输出</div>
+      <div class="arch-bottom">
+        <div class="arch-output">
+          <h4>口语化查询</h4>
+          <p>LLM 理解意图<br>搜索 + 综合 + 格式化</p>
+          <div class="items">
+            <span style="border-color:var(--accent)">快速了解</span>
+            <span style="border-color:var(--synthesis)">深度综合</span>
+            <span style="border-color:var(--concept)">对比/简报</span>
+          </div>
+        </div>
+        <div class="arch-output">
+          <h4>PDF 输出</h4>
+          <p>brief.pdf + report.pdf<br>Playwright + Chrome 渲染</p>
+        </div>
+        <div class="arch-output">
+          <h4>深度研究</h4>
+          <p>推理驱动 8 阶段<br>横纵双轴 + 5 项质量门控 + PDF</p>
+        </div>
+        <div class="arch-output">
+          <h4>知识图谱</h4>
+          <p>Mermaid 静态图<br>Louvain 社区分组</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== SLIDE 3: THREE-STAGE PATTERN ==================== -->
+<section class="slide" id="s3">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="slide-label">LLM-First Architecture</div>
+      <div class="slide-title">三阶段统一模式</div>
+      <div class="slide-desc">所有维护脚本统一接口：脚本收集数据 → LLM 语义判断 → 脚本执行写入</div>
+    </div>
+
+    <div class="three-stage fade-in">
+      <div class="stage-box script">
+        <h4>Phase 1: 脚本收集</h4>
+        <p>--collect-only<br>机械数据采集<br>输出结构化 JSON</p>
+      </div>
+      <div class="stage-arrow">&rarr;</div>
+      <div class="stage-box llm">
+        <h4>Phase 2: LLM 判断</h4>
+        <p>读取 JSON + Prompt 约束<br>语义分析 / 关系判断<br>输出结构化结果</p>
+      </div>
+      <div class="stage-arrow">&rarr;</div>
+      <div class="stage-box script">
+        <h4>Phase 3: 脚本执行</h4>
+        <p>--apply result.json<br>写入 wiki 页面<br>重建索引 + 日志</p>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;">
+      <div class="slide-label" style="margin-bottom:8px;">10 份 Prompt 约束文件</div>
+      <div class="prompt-grid fade-in">
+        <div class="prompt-card">
+          <h5>lint_semantic</h5>
+          <p>健康检查语义分析<br>修复建议 + 升级候选</p>
+        </div>
+        <div class="prompt-card">
+          <h5>claim_evolution</h5>
+          <p>主张关系分析<br>reinforce / contradict / extend</p>
+        </div>
+        <div class="prompt-card">
+          <h5>synthesis_refresh</h5>
+          <p>综合页内容生成<br>分歧识别 + 知识缺口</p>
+        </div>
+        <div class="prompt-card">
+          <h5>review_queue</h5>
+          <p>审核队列排序<br>优先级 + 操作建议</p>
+        </div>
+        <div class="prompt-card">
+          <h5>review_sweep</h5>
+          <p>Review sweep 自动清理<br>R1/R2 规则 + LLM 语义判断</p>
+        </div>
+        <div class="prompt-card">
+          <h5>insight_detection</h5>
+          <p>洞见识别约束<br>10 信号加权评分，阈值 ≥ 3</p>
+        </div>
+        <div class="prompt-card">
+          <h5>ingest_impact</h5>
+          <p>入库影响分析<br>语义相关来源 + 跨域联想</p>
+        </div>
+        <div class="prompt-card">
+          <h5>ingest_compile_v2</h5>
+          <p>入库编译约束<br>Two-Step CoT + 证据标注</p>
+        </div>
+        <div class="prompt-card">
+          <h5>query_synthesis</h5>
+          <p>查询综合与验证<br>来源可信度 + 高精度验证</p>
+        </div>
+        <div class="prompt-card">
+          <h5>research_hypothesis</h5>
+          <p>研究假说形成与校准<br>证据分类 + 压力测试</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; display:grid; grid-template-columns:repeat(6,1fr); gap:8px;" class="fade-in">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);">wiki_lint.py</div>
+        <div style="font-size:9px;color:var(--text2);">健康检查</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);">claim_evolution</div>
+        <div style="font-size:9px;color:var(--text2);">主张演化</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);">review_queue</div>
+        <div style="font-size:9px;color:var(--text2);">审核队列</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);">refresh_synthesis</div>
+        <div style="font-size:9px;color:var(--text2);">综合刷新</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);">delta_compile</div>
+        <div style="font-size:9px;color:var(--text2);">增量编译</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--accent2);">ingest_report</div>
+        <div style="font-size:9px;color:var(--text2);">入库报告</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== SLIDE 4B: CHUNKED DEEP-READING ==================== -->
+<section class="slide" id="s4b">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="slide-label">Chunked Deep-Reading</div>
+      <div class="slide-title">分块深度精读 — Map-Reduce 范式</div>
+      <div class="slide-desc">长文档自动分块 → 逐块提取 → 跨块综合 → V2.0 Compile JSON &ensp;|&ensp; 精读版 claim 9x 粗读版</div>
+    </div>
+    <div class="three-stage fade-in">
+      <div class="stage-box script">
+        <h4>Long Document</h4>
+        <p>PDF / 网页 / ASR<br>&gt;800 行自动触发<br>--chunk-size 可调</p>
+      </div>
+      <div class="stage-arrow">&rarr;</div>
+      <div class="stage-box llm">
+        <h4>Per-Chunk Extract</h4>
+        <p>逐块 LLM 处理<br>保证每段文本<br>都被认真阅读</p>
+      </div>
+      <div class="stage-arrow">&rarr;</div>
+      <div class="stage-box script">
+        <h4>Cross-Chunk Synthesis</h4>
+        <p>跨块综合<br>合并 claim + skeleton<br>V2.0 compile JSON</p>
+      </div>
+    </div>
+    <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;" class="fade-in">
+      <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:var(--accent2);">9x</div>
+        <div style="font-size:11px;color:var(--text2);">精读版 claim 数量</div>
+        <div style="font-size:9px;color:var(--text2);">vs 粗读版</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:var(--accent2);">37</div>
+        <div style="font-size:11px;color:var(--text2);">精读版 claim_inventory</div>
+        <div style="font-size:9px;color:var(--text2);">粗读版仅 4 条</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:24px;font-weight:800;color:var(--accent2);">6</div>
+        <div style="font-size:11px;color:var(--text2);">骨架生成力</div>
+        <div style="font-size:9px;color:var(--text2);">粗读版仅 3 条</div>
+      </div>
+    </div>
+    <p style="margin-top:16px;text-align:center;color:var(--text2);font-size:11px;">自动阈值 &gt;800 行 | --chunk-size 可调 | 7 源全覆盖 | 后端 raw 文件层面操作，与前端来源类型完全解耦</p>
+  </div>
+</section>
+
+<!-- ==================== SLIDE 6: CORE CAPABILITIES ==================== -->
+<section class="slide" id="s6">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="slide-label">Core Capabilities</div>
+      <div class="slide-title">核心能力 — 差异化优势</div>
+    </div>
+    <div class="features-grid fade-in">
+      <div class="f-card f-highlight">
+        <div class="f-icon">&#128230;</div>
+        <h4>7 源自动入库</h4>
+        <p>微信 / 知乎 / YouTube / B站 / 抖音 / PDF / 本地文件 → 域优先路由 + 格式归一化 → 统一 Article 结构</p>
+        <span class="f-tag">source_adapters</span>
+      </div>
+      <div class="f-card f-highlight">
+        <div class="f-icon">&#128218;</div>
+        <h4>分块深度精读</h4>
+        <p>长文档自动分块 → 逐块提取 → 跨块综合 → 精读版 claim 9x 粗读版。自动阈值 &gt;800 行</p>
+        <span class="f-tag">chunked-prepare</span>
+      </div>
+      <div class="f-card f-highlight">
+        <div class="f-icon">&#128220;</div>
+        <h4>简报页认知压缩</h4>
+        <p>6 维骨架（生成力叙事 / 数据 / 推演 / 失效信号 / 方法论评估 / 隐性假设） + 40 条主张清单 + 置信度标注 + 来源溯源</p>
+        <span class="f-tag">ingest_compile_v2</span>
+      </div>
+      <div class="f-card f-highlight">
+        <div class="f-icon">&#128300;</div>
+        <h4>Deep Research 深度研究</h4>
+        <p>推理驱动 8 阶段协议：横向追同期广度（竞品对比→生态位→趋势），纵向追时间深度（起源→演进→决策逻辑），5 项质量门控 + PDF</p>
+        <span class="f-tag">deep-research</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128300;</div>
+        <h4>跨域联想 + 迁移结论</h4>
+        <p>bridge_logic → migration_conclusion，不只是"相似"而是"可迁移策略"</p>
+        <span class="f-tag">cross_domain_insights</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128269;</div>
+        <h4>口语化查询 + 智能路由</h4>
+        <p>用户说自然语言 → LLM 理解意图 → 语义检索 + 综合 → 10 种输出格式自动匹配</p>
+        <span class="f-tag">query_synthesis</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128736;</div>
+        <h4>立场影响检测</h4>
+        <p>reinforce / contradict / extend 自动检测新来源对已有立场页的影响</p>
+        <span class="f-tag">stance_impacts</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#127760;</div>
+        <h4>知识图谱自动优化</h4>
+        <p>Mermaid 原生渲染 + Louvain 社区分组 + 度数剪枝自动净化关系。域子图页面按领域筛选，解决大图谱噪音问题</p>
+        <span class="f-tag">graph_cleanup</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128272;</div>
+        <h4>来源溯源验证</h4>
+        <p>grounding_quote 回溯原文，ASR/PDF 容差匹配，证据类型标注</p>
+        <span class="f-tag">grounding_validate</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== SLIDE 7: VALUE ==================== -->
+<section class="slide" id="s7">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="slide-label">Value Proposition</div>
+      <div class="slide-title">每次入库，知识库整体升级</div>
+    </div>
+    <div class="value-grid fade-in">
+      <div class="v-card">
+        <div class="v-num">1</div>
+        <div>
+          <h4>LLM 语义判断</h4>
+          <p>脚本不再做关键词匹配——相关来源、主张关系、综合内容全部由 LLM 语义分析</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">2</div>
+        <div>
+          <h4>7 源自动入库</h4>
+          <p>微信 / 知乎 / YouTube / B站 / 抖音 / PDF / 本地文件 → 格式归一化 → 统一编译</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">3</div>
+        <div>
+          <h4>分块深度精读</h4>
+          <p>长文档自动分块 → 逐块提取 → 跨块综合，精读版 claim 9x 粗读版</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">4</div>
+        <div>
+          <h4>跨域联想 + 迁移结论</h4>
+          <p>不只是"相似"而是"可迁移策略"—— bridge_logic → migration_conclusion</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">5</div>
+        <div>
+          <h4>报告质量门控</h4>
+          <p>5 项质量门控 + 依赖链审查 + 三剧本推演</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">6</div>
+        <div>
+          <h4>来源溯源验证</h4>
+          <p>grounding_quote 回溯原文，ASR/PDF 容差匹配，证据类型标注</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<section class="slide footer-slide">
+  <div class="slide-inner">
+    <h2>从阅读到知识操作系统</h2>
+    <p>Obsidian Wiki Skill V1.3.0 &middot; Chunked Deep-Reading &middot; Schema Auto-Correction &middot; 8 Prompt Constraints</p>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#222640',
+    primaryTextColor: '#e2e4ed',
+    primaryBorderColor: '#2d3148',
+    lineColor: '#8b8fa3',
+    secondaryColor: '#161822',
+    tertiaryColor: '#1c1f2e',
+    noteBkgColor: '#1c1f2e',
+    noteTextColor: '#e2e4ed',
+    noteBorderColor: '#2d3148',
+    actorBkg: '#222640',
+    actorBorder: '#6c5ce7',
+    actorTextColor: '#e2e4ed',
+    signalColor: '#8b8fa3',
+    signalTextColor: '#e2e4ed',
+    labelBoxBkgColor: '#161822',
+    labelBoxBorderColor: '#2d3148',
+    labelTextColor: '#e2e4ed',
+    loopTextColor: '#a29bfe',
+    activationBkgColor: '#1c1f2e',
+    activationBorderColor: '#6c5ce7',
+    sequenceNumberColor: '#fff',
+  },
+  sequence: {
+    actorMargin: 30,
+    mirrorActors: false,
+    messageMargin: 14,
+    boxMargin: 2,
+    noteMargin: 4,
+    useMaxWidth: true,
+    wrap: true,
+    width: 140,
+    actorFontSize: 11,
+    messageFontSize: 10,
+    noteFontSize: 9,
+    noteAlign: 'center',
+  }
+});
+
+/* After Mermaid renders, unwrap <pre> so SVG sits directly in .seq-container */
+function unwrapMermaid() {
+  document.querySelectorAll('.seq-container pre.mermaid').forEach(pre => {
+    const svg = pre.querySelector('svg');
+    if (!svg) return;
+    svg.style.width = '100%';
+    svg.style.height = 'auto';
+    pre.parentNode.insertBefore(svg, pre);
+    pre.remove();
+  });
+}
+if (document.readyState === 'complete') {
+  setTimeout(unwrapMermaid, 200);
+} else {
+  window.addEventListener('load', () => setTimeout(unwrapMermaid, 200));
+}
+
+/* Fade-in on scroll */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+/* Keyboard navigation */
+document.addEventListener('keydown', (e) => {
+  const slides = [...document.querySelectorAll('.slide')];
+  const scrollY = window.scrollY + 10;
+  let current = 0;
+  for (let i = 0; i < slides.length; i++) {
+    if (slides[i].offsetTop <= scrollY) current = i;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+    e.preventDefault();
+    slides[Math.min(current + 1, slides.length - 1)].scrollIntoView({ behavior: 'smooth' });
+  } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+    e.preventDefault();
+    slides[Math.max(current - 1, 0)].scrollIntoView({ behavior: 'smooth' });
+  }
+});
+</script>
+</body>
+</html>

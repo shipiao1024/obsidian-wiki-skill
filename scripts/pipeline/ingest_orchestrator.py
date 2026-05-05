@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import sys
 from pathlib import Path
 
 from .types import Article
 from .text_utils import slugify_article, parse_frontmatter
-from .extractors import detect_domains, detect_domain_mismatch, concept_slug, comparison_slug, domain_slug, entity_slug
+from .extractors import detect_domain_mismatch, concept_slug, comparison_slug, domain_slug, entity_slug
 from .vault_config import transcript_page_name
 from .page_builders import (
     article_output_exists,
-    build_brief_page,
     build_brief_page_from_compile,
-    build_source_page,
     build_source_page_from_compile,
     write_page,
 )
@@ -26,9 +27,76 @@ from .index_log import update_hot_cache
 
 
 def _get_compile():
-    """Lazy import of compile module via apply shim to support mock.patch on pipeline.apply."""
-    from . import apply as _apply_shim
-    return _apply_shim
+    """Lazy import of compile module. Direct import replaces the previous
+    apply-shim indirection. Tests should mock pipeline.compile.try_llm_compile."""
+    from . import compile as _compile_module
+    return _compile_module
+
+
+_ACTIONABLE_ORDINALS = {"Working", "Supported", "Stable"}
+
+
+def _runtime_payload_dir() -> Path:
+    """Return a writable local runtime directory for prepare-only payload dumps."""
+    candidates: list[Path] = []
+    configured = os.environ.get("KWIKI_RUNTIME_DIR")
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.append(Path.cwd() / ".runtime-fetch")
+    candidates.append(Path(__file__).resolve().parents[2] / ".runtime-fetch")
+    for root in candidates:
+        try:
+            payload_dir = root / "compile-payloads"
+            payload_dir.mkdir(parents=True, exist_ok=True)
+            return payload_dir
+        except OSError:
+            continue
+    raise OSError("No writable runtime directory available for compile payloads.")
+
+
+def _determine_lifecycle(compiled_payload: dict | None, article: Article) -> str:
+    """Determine page lifecycle (official/candidate) from compile payload and confidence."""
+    lifecycle = "official"
+    if not compiled_payload or compiled_payload.get("schema_version") != "2.0":
+        return lifecycle
+    result = compiled_payload.get("result", {}) if isinstance(compiled_payload.get("result"), dict) else {}
+    review_hints = result.get("review_hints", {}) if isinstance(result.get("review_hints"), dict) else {}
+    needs_review = bool(review_hints.get("needs_human_review", False))
+    has_actionable = any(
+        isinstance(c, dict) and c.get("confidence", "").strip() in _ACTIONABLE_ORDINALS
+        for c in article.claim_inventory
+    )
+    if needs_review or (article.confidence not in _ACTIONABLE_ORDINALS and not has_actionable):
+        lifecycle = "candidate"
+    return lifecycle
+
+
+def _apply_purpose_filter(vault: Path, article: Article) -> bool:
+    """Check if article matches purpose.md exclusion rules. Returns True if excluded."""
+    purpose_path = vault / "purpose.md"
+    if not purpose_path.exists():
+        return False
+    purpose_text = purpose_path.read_text(encoding="utf-8")
+    exclude_section = ""
+    in_exclude = False
+    for line in purpose_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## 排除范围"):
+            in_exclude = True
+            continue
+        if stripped.startswith("## ") and in_exclude:
+            in_exclude = False
+            continue
+        if in_exclude and stripped.startswith("- "):
+            exclude_section += stripped[2:] + " "
+    if not exclude_section:
+        return False
+    article_text = f"{article.title} {article.body[:1500]}"
+    exclude_terms = [t.strip() for t in exclude_section.split() if len(t.strip()) >= 2]
+    match_count = sum(1 for t in exclude_terms if t in article_text)
+    return match_count >= 2 or (exclude_terms and match_count / len(exclude_terms) > 0.3)
+
+
 from .ingest import (
     build_raw_page,
     build_transcript_page,
@@ -43,7 +111,14 @@ from .compile import (
 )
 
 
-def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: bool) -> dict[str, str]:
+def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: bool = False, *, compile_mode: str = "prepare-only", chunk_size: int = 500) -> dict[str, str]:
+    # Auto-chunk threshold: switch to chunked-prepare for long documents
+    _AUTO_CHUNK_THRESHOLD = 800
+    effective_compile_mode = compile_mode
+    if compile_mode == "prepare-only" and article.body and len(article.body.splitlines()) > _AUTO_CHUNK_THRESHOLD:
+        effective_compile_mode = "chunked-prepare"
+        print(f"[auto-chunk] {article.title}: {len(article.body.splitlines())} lines > {_AUTO_CHUNK_THRESHOLD} threshold, switching to chunked-prepare", file=sys.stderr)
+
     slug = slugify_article(article.date, article.title)
     raw_path = vault / "raw" / "articles" / f"{slug}.md"
     transcript_path = vault / "raw" / "transcripts" / f"{slug}--{transcript_page_name(article)}.md"
@@ -68,38 +143,82 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
     if article.transcript_body:
         write_page(transcript_path, build_transcript_page(article, slug), force)
     write_page(raw_path, build_raw_page(article, slug, assets_dir), force)
-    compiled_payload, compile_reason = _get_compile().try_llm_compile(vault, article, slug, raw_path, no_llm_compile)
-    # Extract dominant confidence from v2 claim_inventory
+    compiled_payload, compile_reason = _get_compile().try_llm_compile(vault, article, slug, raw_path, no_llm_compile, mode=effective_compile_mode, chunk_size=chunk_size)
+
+    # Persist prepare-only payload to a local writable runtime directory.
+    if compiled_payload and compiled_payload.get("prepare_only"):
+        try:
+            payload_path = _runtime_payload_dir() / f"{slug}_payload.json"
+            payload_path.write_text(json.dumps(compiled_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[payload] Prepare-only payload saved to {payload_path}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[payload] Failed to save payload: {exc}", file=sys.stderr)
+    # Extract dominant confidence from v2 claim_inventory (ordinal labels)
+    _ORDINAL_RANK = {"Seeded": 0, "Preliminary": 1, "Working": 2, "Supported": 3, "Stable": 4}
     if compiled_payload and compiled_payload.get("schema_version") == "2.0":
         result = compiled_payload.get("result", {}) if isinstance(compiled_payload.get("result"), dict) else {}
         claim_inventory = result.get("claim_inventory", []) if isinstance(result.get("claim_inventory"), list) else []
         if claim_inventory:
-            conf_counts: dict[str, int] = {}
+            best_conf = ""
+            best_rank = -1
             for claim in claim_inventory:
                 if not isinstance(claim, dict):
                     continue
-                c = str(claim.get("confidence", "")).strip().lower()
-                if c in ("high", "medium", "low"):
-                    conf_counts[c] = conf_counts.get(c, 0) + 1
-            if conf_counts:
-                # high > medium > low priority
-                for level in ("high", "medium", "low"):
-                    if level in conf_counts:
-                        article.confidence = level
-                        break
+                c = str(claim.get("confidence", "")).strip()
+                rank = _ORDINAL_RANK.get(c, -1)
+                if rank > best_rank:
+                    best_rank = rank
+                    best_conf = c
+            if best_conf:
+                article.confidence = best_conf
+        article.claim_inventory = claim_inventory
+    lifecycle = _determine_lifecycle(compiled_payload, article)
     compiled = compile_shape_from_payload(compiled_payload)
-    compile_mode = "heuristic"
-    if compiled_payload and compiled_payload.get("schema_version") == "2.0":
+    compile_mode = "failed"
+    if compiled_payload and compiled_payload.get("prepare_only"):
+        compile_mode = "prepare-only"
+    elif compiled_payload and compiled_payload.get("schema_version") == "2.0":
         compile_mode = "llm-v2"
     elif compiled:
         compile_mode = "llm"
 
+    _brief_pdf_path = ""
     if compiled:
-        write_page(brief_path, build_brief_page_from_compile(article, slug, compiled), force)
-        write_page(source_path, build_source_page_from_compile(vault, article, slug, compiled), force)
+        # Extract enhanced fields from v2 payload
+        _cross_insights = []
+        _article_type = ""
+        if compiled_payload and compiled_payload.get("schema_version") == "2.0":
+            _result = compiled_payload.get("result", {}) if isinstance(compiled_payload.get("result"), dict) else {}
+            _cross_insights = _result.get("cross_domain_insights", []) if isinstance(_result.get("cross_domain_insights"), list) else []
+            _ct = compiled_payload.get("compile_target", {}) if isinstance(compiled_payload.get("compile_target"), dict) else {}
+            _article_type = str(_ct.get("article_type", "")).strip()
+        write_page(brief_path, build_brief_page_from_compile(
+            article, slug, compiled, lifecycle,
+            cross_domain_insights=_cross_insights,
+            article_type=_article_type,
+        ), force)
+        write_page(source_path, build_source_page_from_compile(vault, article, slug, compiled, lifecycle), force)
+        # --- Generate brief PDF ---
+        _brief_pdf_path = ""
+        try:
+            from .pdf_utils import brief_to_pdf as _brief_to_pdf
+            pdf_result = _brief_to_pdf(brief_path, title=f"{article.title} - 简报")
+            if pdf_result:
+                _brief_pdf_path = str(pdf_result)
+        except Exception:
+            pass  # PDF generation is non-critical
     else:
-        write_page(brief_path, build_brief_page(article, slug, compile_mode="heuristic"), force)
-        write_page(source_path, build_source_page(vault, article, slug, compile_mode="heuristic"), force)
+        # No heuristic fallback — compile failed, return without generating pages
+        return {
+            "title": article.title,
+            "slug": slug,
+            "status": "failed",
+            "compile_mode": compile_mode,
+            "compile_reason": compile_reason_from_payload(compiled_payload, compile_reason),
+            "skip_reason": "",
+            "quality": article.quality,
+            "delta_outputs": "",
+        }
     domains_override = compiled_domains_from_payload(compiled_payload)
     emitted_deltas = emit_update_proposals_from_payload(
         vault=vault,
@@ -108,28 +227,7 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
         article_title=article.title,
     )
     # --- purpose.md filtering: skip taxonomy pages for excluded content ---
-    purpose_path = vault / "purpose.md"
-    purpose_filter_active = False
-    if purpose_path.exists():
-        purpose_text = purpose_path.read_text(encoding="utf-8")
-        exclude_section = ""
-        in_exclude = False
-        for line in purpose_text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("## 排除范围"):
-                in_exclude = True
-                continue
-            if stripped.startswith("## ") and in_exclude:
-                in_exclude = False
-                continue
-            if in_exclude and stripped.startswith("- "):
-                exclude_section += stripped[2:] + " "
-        if exclude_section:
-            article_text = f"{article.title} {article.body[:1500]}"
-            exclude_terms = [t.strip() for t in exclude_section.split() if len(t.strip()) >= 2]
-            match_count = sum(1 for t in exclude_terms if t in article_text)
-            if match_count >= 2 or (exclude_terms and match_count / len(exclude_terms) > 0.3):
-                purpose_filter_active = True
+    purpose_filter_active = _apply_purpose_filter(vault, article)
 
     if not purpose_filter_active:
         ensure_taxonomy_pages(
@@ -139,6 +237,7 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
             force,
             domains_override=domains_override,
             compiled_payload=compiled_payload,
+            source_lifecycle=lifecycle,
         )
     ensure_synthesis_pages(vault, article, slug, domains_override=domains_override)
 
@@ -195,22 +294,42 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
     # --- Rebuild knowledge graph after ingestion ---
     try:
         from .graph_mermaid import write_knowledge_graph as _write_mermaid
-        from .graph_analysis import write_graph_data as _write_graph_data
-        from .graph_html import write_graph_html as _write_graph_html
         _write_mermaid(vault)
-        _write_graph_data(vault)
-        _write_graph_html(vault)
     except Exception:
         pass  # graph rebuild is non-critical; don't block ingestion
 
+    # --- Rebuild domain subgraph pages ---
+    try:
+        from .graph_layers import build_all_domain_subgraphs as _build_subgraphs
+        _build_subgraphs(vault)
+    except Exception:
+        pass  # subgraph rebuild is non-critical; don't block ingestion
+
+    # --- Claim evolution: now LLM-driven ---
+    # Claim evolution analysis is no longer auto-generated after ingest.
+    # Use `claim_evolution.py --collect-only` to gather claims, then let LLM
+    # analyze relationships per references/prompts/claim_evolution.md.
+    # Use `claim_evolution.py --apply <result.json>` to write the page.
+
     # --- Build ingest impact report ---
-    domain_mismatch = detect_domain_mismatch(article, vault)
+    domain_mismatch = detect_domain_mismatch(article, vault, article_domains=domains_override)
     from .ingest_report import build_ingest_impact_report, format_ingest_report
     impact = build_ingest_impact_report(
         vault, slug, article.title, compiled_payload,
         compile_mode=compile_mode, article=article, domain_mismatch=domain_mismatch,
+        brief_pdf_path=_brief_pdf_path, delta_count=len(emitted_deltas),
     )
     impact_text = format_ingest_report(impact)
+
+    # --- Detect deep research triggers ---
+    try:
+        from .deep_research_triggers import detect_triggers, format_trigger_suggestions
+        triggers = detect_triggers(compiled_payload, vault, source_slug=slug)
+        trigger_text = format_trigger_suggestions(triggers)
+        if trigger_text:
+            impact_text += "\n" + trigger_text
+    except Exception:
+        pass  # trigger detection is non-critical; don't block ingestion
 
     return {
         "title": article.title,
@@ -222,4 +341,5 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
         "quality": article.quality,
         "delta_outputs": ",".join(path.name for path in emitted_deltas),
         "impact_report": impact_text,
+        "brief_pdf": _brief_pdf_path,
     }

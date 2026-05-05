@@ -13,6 +13,10 @@ LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 CODE_BLOCK = re.compile(r"```.*?```", re.S)
 HEADING = re.compile(r"^\s*#+\s*", re.M)
 
+# Shared patterns for claim/section parsing (previously duplicated in wiki_lint, review_queue, claim_evolution)
+SECTION_PATTERN = re.compile(r"##\s+(.+?)\s*\n(.*?)(?=\n##\s+|\Z)", re.S)
+CLAIM_PATTERN = re.compile(r"^- \[([^\]|]+)\|([^\]]+)\]\s+(.+)$", re.M)
+
 
 def sanitize_filename(name: str, max_length: int = 96) -> str:
     name = INVALID_CHARS.sub("_", name.strip())
@@ -105,6 +109,14 @@ def section_excerpt(body: str, heading: str) -> str:
     return text[:240].strip()
 
 
+def get_one_sentence(meta: dict[str, str], body: str) -> str:
+    """Get one-sentence summary, preferring frontmatter field over section excerpt."""
+    fm = meta.get("one_sentence", "").strip()
+    if fm:
+        return fm
+    return section_excerpt(body, "一句话结论")
+
+
 def filename_stem(path) -> str:
     return path.stem
 
@@ -114,6 +126,14 @@ def body_text(article: Article, limit: int | None = None) -> str:
     if limit is not None:
         return text[:limit]
     return text
+
+
+def section_body(body: str, heading: str) -> str:
+    """Extract the body text under a given heading. Shared helper (previously duplicated)."""
+    for match in SECTION_PATTERN.finditer(body):
+        if match.group(1).strip() == heading:
+            return match.group(2).strip()
+    return ""
 
 
 def body_lines(article: Article) -> list[str]:
@@ -129,3 +149,18 @@ def body_lines(article: Article) -> list[str]:
             continue
         lines.append(text)
     return lines
+
+
+def validate_apply_json(data: dict, required_fields: list[str], context: str = "") -> None:
+    """Validate LLM result JSON has required fields before apply.
+
+    Raises ValueError with actionable message if fields are missing.
+    Used by all --apply functions to guard against malformed LLM output.
+    """
+    missing = [f for f in required_fields if f not in data]
+    if missing:
+        raise ValueError(
+            f"Apply JSON missing required fields: {missing}. "
+            f"Context: {context}. "
+            f"Ensure LLM output matches the schema in references/prompts/*.md"
+        )

@@ -26,7 +26,7 @@ from pipeline.fetch import (
     summarize_collection_statuses,
 )
 from pipeline.ingest import ensure_bootstrap, build_raw_page, build_transcript_page
-from pipeline.compile import try_llm_compile
+from pipeline.compile import try_llm_compile, try_llm_compile_two_step
 from pipeline.ingest_orchestrator import ingest_article
 from pipeline.index_log import rebuild_index, append_log
 
@@ -45,6 +45,7 @@ __all__ = [
     "build_raw_page",
     "build_transcript_page",
     "try_llm_compile",
+    "try_llm_compile_two_step",
     "ingest_article",
     "rebuild_index",
     "append_log",

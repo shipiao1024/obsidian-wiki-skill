@@ -10,7 +10,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from .shared import parse_frontmatter, section_excerpt
+from .shared import get_one_sentence, parse_frontmatter, section_excerpt
 
 
 def collect_digest_sources(vault: Path, topic: str, limit: int = 10) -> list[dict[str, str]]:
@@ -45,6 +45,7 @@ def collect_digest_sources(vault: Path, topic: str, limit: int = 10) -> list[dic
                 "date": meta.get("date", "").strip('"'),
                 "type": meta.get("type", folder_name),
                 "score": str(score),
+                "meta": meta,
                 "body_excerpt": body[:600],
             })
 
@@ -63,7 +64,7 @@ def build_deep_report(vault: Path, topic: str, sources: list[dict[str, str]]) ->
     lines.append("")
     background_sources = [s for s in sources if s["type"] in ("source", "brief")]
     for s in background_sources[:3]:
-        core = section_excerpt(s["body_excerpt"], "核心摘要") or section_excerpt(s["body_excerpt"], "一句话结论")
+        core = section_excerpt(s["body_excerpt"], "核心摘要") or get_one_sentence(s.get("meta", {}), s["body_excerpt"])
         lines.append(f"- [[{s['ref']}]]: {core[:200] or s['title']}")
     lines.append("")
 

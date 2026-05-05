@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pipeline.encoding_fix import fix_windows_encoding
 from pipeline.deep_research import (
     init_research_project,
     collect_vault_evidence,
@@ -34,6 +35,7 @@ from pipeline.dependency_ledger import (
 
 
 def main() -> int:
+    fix_windows_encoding()
     parser = argparse.ArgumentParser(description="Deep research orchestration")
     sub = parser.add_subparsers(dest="command")
 
@@ -41,7 +43,8 @@ def main() -> int:
     init_cmd = sub.add_parser("init", help="Initialize a deep-research project")
     init_cmd.add_argument("--vault", required=True, help="Path to Obsidian vault")
     init_cmd.add_argument("--topic", required=True, help="Research topic")
-    init_cmd.add_argument("--hypotheses-json", required=True, help="JSON file with hypothesis cards")
+    init_cmd.add_argument("--object-type", default="", help="Research object type (product/company/concept/person)")
+    init_cmd.add_argument("--hypotheses-json", required=True, help="Path to JSON file with hypothesis cards (use '-' to read from stdin)")
 
     # update-ledger
     ul_cmd = sub.add_parser("update-ledger", help="Add F node or update H confidence")
@@ -61,13 +64,13 @@ def main() -> int:
     rs_cmd = sub.add_parser("record-scenarios", help="Record scenario stress test table")
     rs_cmd.add_argument("--vault", required=True)
     rs_cmd.add_argument("--topic", required=True)
-    rs_cmd.add_argument("--scenarios-json", required=True, help="JSON file with scenarios")
+    rs_cmd.add_argument("--scenarios-json", required=True, help="Path to JSON file with scenarios (use '-' to read from stdin)")
 
     # record-premortem
     rp_cmd = sub.add_parser("record-premortem", help="Record pre-mortem failure scenarios")
     rp_cmd.add_argument("--vault", required=True)
     rp_cmd.add_argument("--topic", required=True)
-    rp_cmd.add_argument("--premortem-json", required=True, help="JSON file with premortem")
+    rp_cmd.add_argument("--premortem-json", required=True, help="Path to JSON file with premortem (use '-' to read from stdin)")
 
     # finalize-report
     fr_cmd = sub.add_parser("finalize-report", help="Write the final research report")
@@ -117,9 +120,12 @@ def main() -> int:
     vault = Path(args.vault)
 
     if args.command == "init":
-        h_file = Path(args.hypotheses_json)
-        hypotheses = json.loads(h_file.read_text(encoding="utf-8"))
-        result = init_research_project(vault, args.topic, hypotheses)
+        if args.hypotheses_json == "-":
+            hypotheses = json.loads(sys.stdin.read())
+        else:
+            h_file = Path(args.hypotheses_json)
+            hypotheses = json.loads(h_file.read_text(encoding="utf-8"))
+        result = init_research_project(vault, args.topic, hypotheses, object_type=args.object_type)
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
     elif args.command == "update-ledger":
@@ -142,22 +148,36 @@ def main() -> int:
             print(json.dumps(changed, ensure_ascii=False, indent=2))
 
     elif args.command == "record-scenarios":
-        s_file = Path(args.scenarios_json)
-        scenarios = json.loads(s_file.read_text(encoding="utf-8"))
+        if args.scenarios_json == "-":
+            scenarios = json.loads(sys.stdin.read())
+        else:
+            s_file = Path(args.scenarios_json)
+            scenarios = json.loads(s_file.read_text(encoding="utf-8"))
         path = record_scenarios(vault, args.topic, scenarios)
         print(f"Written: {path}")
 
     elif args.command == "record-premortem":
-        p_file = Path(args.premortem_json)
-        premortem = json.loads(p_file.read_text(encoding="utf-8"))
+        if args.premortem_json == "-":
+            premortem = json.loads(sys.stdin.read())
+        else:
+            p_file = Path(args.premortem_json)
+            premortem = json.loads(p_file.read_text(encoding="utf-8"))
         path = record_premortem(vault, args.topic, premortem)
         print(f"Written: {path}")
 
     elif args.command == "finalize-report":
         report_file = Path(args.report_file)
         report_md = report_file.read_text(encoding="utf-8")
-        path = finalize_report(vault, args.topic, report_md)
-        print(f"Written: {path}")
+        result = finalize_report(vault, args.topic, report_md)
+        print(f"Written: {result['report_path']}")
+        if result.get("pdf_path"):
+            print(f"PDF: {result['pdf_path']}")
+        if result.get("validation"):
+            v = result["validation"]
+            print(f"Validation: {v.pass_count} pass, {v.fail_count} fail, {v.warn_count} warn")
+            if not v.overall_passed:
+                failed = [r.name for r in v.results if not r.passed and r.severity == "fail"]
+                print(f"  Failed: {', '.join(failed)}")
         if args.run_closure:
             result = update_closure(vault, args.topic)
             print(f"Closure: {len(result['resolved_questions'])} questions resolved, "

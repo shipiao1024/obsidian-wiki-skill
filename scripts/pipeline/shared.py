@@ -4,7 +4,7 @@ The original shared.py has been split into:
   pipeline/types.py      — Article dataclass, WIKI_DIRS, constants
   pipeline/text_utils.py — regex helpers, plain_text, parse_frontmatter, section_excerpt
   pipeline/extractors.py — detect_domains, extract_concepts/entities, taxonomy helpers
-  pipeline/vault_config.py — resolve_vault, vault registry, video/transcript helpers
+  pipeline/vault_config.py — resolve_vault, vault registry, DEFAULT_DOMAINS, domain keywords
 
 This shim preserves all existing import paths (from pipeline.shared import ...).
 """
@@ -12,7 +12,6 @@ This shim preserves all existing import paths (from pipeline.shared import ...).
 from .types import (
     Article,
     WIKI_DIRS,
-    DEFAULT_DOMAINS,
     DOMAIN_MIN_SCORE,
     CONCEPT_PAGE_THRESHOLD,
     ENTITY_PAGE_THRESHOLD,
@@ -30,6 +29,8 @@ from .text_utils import (
     LINK,
     CODE_BLOCK,
     HEADING,
+    SECTION_PATTERN,
+    CLAIM_PATTERN,
     sanitize_filename,
     slugify_article,
     parse_frontmatter,
@@ -39,14 +40,14 @@ from .text_utils import (
     top_lines,
     brief_lead,
     section_excerpt,
+    section_body,
+    get_one_sentence,
     filename_stem,
     body_text,
     body_lines,
+    validate_apply_json,
 )
 from .extractors import (
-    detect_domains,
-    extract_entities,
-    extract_concepts,
     concept_slug,
     entity_slug,
     domain_slug,
@@ -55,8 +56,6 @@ from .extractors import (
     mature_concepts,
     mature_entities,
     existing_taxonomy_links,
-    extract_content_questions,
-    extract_content_topics,
     vault_domain_distribution,
     detect_domain_mismatch,
 )
@@ -64,6 +63,7 @@ from .vault_config import (
     CONF_DIR,
     VAULTS_JSON,
     VAULT_CONF,
+    DEFAULT_DOMAINS,
     video_id_from_url,
     normalize_collection_url,
     transcript_fidelity,
@@ -72,6 +72,7 @@ from .vault_config import (
     load_vault_registry,
     save_vault_registry,
     parse_purpose_md,
+    load_domain_keywords,
     select_vault_by_domains,
     resolve_vault,
     _discover_obsidian_vault,
@@ -96,6 +97,8 @@ __all__ = [
     "LINK",
     "CODE_BLOCK",
     "HEADING",
+    "SECTION_PATTERN",
+    "CLAIM_PATTERN",
     "sanitize_filename",
     "slugify_article",
     "parse_frontmatter",
@@ -105,12 +108,11 @@ __all__ = [
     "top_lines",
     "brief_lead",
     "section_excerpt",
+    "section_body",
     "filename_stem",
     "body_text",
     "body_lines",
-    "detect_domains",
-    "extract_entities",
-    "extract_concepts",
+    "validate_apply_json",
     "concept_slug",
     "entity_slug",
     "domain_slug",
@@ -119,8 +121,6 @@ __all__ = [
     "mature_concepts",
     "mature_entities",
     "existing_taxonomy_links",
-    "extract_content_questions",
-    "extract_content_topics",
     "vault_domain_distribution",
     "detect_domain_mismatch",
     "CONF_DIR",
@@ -134,6 +134,7 @@ __all__ = [
     "load_vault_registry",
     "save_vault_registry",
     "parse_purpose_md",
+    "load_domain_keywords",
     "select_vault_by_domains",
     "resolve_vault",
     "_discover_obsidian_vault",

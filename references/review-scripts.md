@@ -17,7 +17,9 @@ What the health check script does:
 - Reports missing `brief/source` pairs, orphan pages, empty taxonomy folders, and broken wikilinks.
 - Reports low-quality `source` pages through `low_quality_sources` when frontmatter marks them as `quality: low`.
 - Scans `delta-compile` claim blocks for low-confidence or evidence-free claim inventory items.
-- Scans `delta-compile`、`source`、`synthesis` pages for obvious claim conflicts such as `会/不会`、`支持/反对` around the same core phrase.
+- Scans `delta-compile`、`source`、`brief`、`synthesis` pages for obvious claim conflicts such as `会/不会`、`支持/反对` around the same core phrase.
+- Reports `low_confidence_claims`: all confidence=low claims across sources/briefs/syntheses.
+- Reports `candidate_pages`: all `lifecycle: candidate` pages across sources/briefs/concepts/entities.
 
 ## wiki_size_report.py
 
@@ -91,7 +93,9 @@ python Claude-obsidian-wiki-skill\scripts\refresh_synthesis.py `
 What the synthesis refresh script does:
 
 - Rebuilds `wiki/syntheses/*.md` from their currently linked `sources/*`.
-- Prefers structural judgement sentences over narrative setup.
+- When source pages contain `## 关键判断` sections, extracts claims and ranks them by confidence-weighted scoring (high=6, medium=3, low=1).
+- Produces synthesis pages with `[confidence]`-labeled claims and source links in `## 核心判断`.
+- Falls back to raw sentence extraction and keyword scoring when no claim sections are available.
 - Produces a clearer `当前结论 / 核心判断 / 待验证` structure for later query work.
 
 ## review_queue.py
@@ -108,9 +112,29 @@ What the review queue script does:
 - Builds a focused pending-review page at `wiki/review_queue.md`.
 - Lists only `temporary` and `review-needed` outputs.
 - Adds an explicit `冲突候选` section for outputs involved in claim conflicts.
+- `低质量来源候选` section for `quality: low` source pages.
+- `候选页待审` section for `lifecycle: candidate` pages (sources/briefs/concepts/entities).
+- `低置信判断` section for confidence=low claims extracted from `## 关键判断` sections.
+- `可升级候选页` section for candidate pages meeting 2+ source confirmation threshold.
+- `矛盾主张` section for cross-source contradicting claims detected by `claim_evolution.py`.
 - Prioritizes conflicted `delta-compile` drafts ahead of ordinary pending outputs.
 - Separates duplicate output titles from the active queue.
 - Keeps absorbed history out of the day-to-day queue while preserving auditability.
+
+## claim_evolution.py
+
+Claim evolution tracking entrypoint:
+
+```powershell
+python Claude-obsidian-wiki-skill\scripts\claim_evolution.py --vault "D:\Obsidian\MyVault" --write
+```
+
+What the claim evolution script does:
+
+- Matches claims across sources by keyword overlap (using `claim_keywords` from wiki_lint).
+- Classifies relationships as `reinforce` (same direction), `contradict` (opposite direction using conflict pairs), or `extend` (new keywords added).
+- Writes `wiki/claim-evolution.md` with `矛盾主张`、`强化主张`、`延伸主张` sections.
+- Automatically triggered after each ingest to rebuild the evolution page.
 
 ## archive_outputs.py
 
@@ -203,7 +227,7 @@ What the main graph export script does:
   - A Mermaid main graph that can be opened directly inside Obsidian.
   - A copy-ready Obsidian graph filter guide for the same knowledge-layer view.
 - Is useful when Obsidian's raw global graph is too noisy, but you still want to stay inside Obsidian instead of switching to a separate visualization tool.
-- **`--vault` is mandatory when content has been auto-routed to a non-default vault**: The host agent must pass the vault path where content was actually ingested, not rely on `vault.conf`/`vaults.json` defaults. Otherwise the graph will be generated in the wrong vault.
+- **`--vault` is mandatory when content has been auto-routed to a non-default vault**: You must pass the vault path where content was actually ingested, not rely on `vault.conf`/`vaults.json` defaults. Otherwise the graph will be generated in the wrong vault.
 - With `--typed-edges`, also generates `wiki/typed-graph.md` with classified edge types:
   - `belongs_to` — concept/entity → domain
   - `mentions` — source/brief → concept/entity/domain

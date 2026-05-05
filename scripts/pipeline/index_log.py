@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from .text_utils import parse_frontmatter, section_excerpt, plain_text
+from .text_utils import get_one_sentence, parse_frontmatter, section_excerpt, plain_text
 from .page_builders import render_frontmatter, replace_links_section
 
 
@@ -52,7 +52,7 @@ def rebuild_index(vault: Path) -> None:
             if page_type == "source":
                 summary = section_excerpt(body, "核心摘要")
             elif page_type == "brief":
-                summary = section_excerpt(body, "一句话结论")
+                summary = get_one_sentence(meta, body)
             else:
                 summary = plain_text(body)[:240].strip()
             if not summary:

@@ -155,8 +155,13 @@ def detect_domain_gaps(vault: Path) -> list[dict[str, str]]:
 
 
 def detect_unrepresented_topics(vault: Path) -> list[dict[str, str]]:
-    """Keywords frequently mentioned in sources but missing from taxonomy."""
-    from .shared import extract_concepts, extract_entities, body_text, Article
+    """Keywords frequently mentioned in sources but missing from taxonomy.
+
+    Uses simple frequency analysis (script-based intelligent extraction removed;
+    the LLM is now responsible for concept/entity extraction during compile).
+    """
+    import re
+    from .shared import body_text
 
     # Collect all existing taxonomy names
     existing: set[str] = set()
@@ -167,31 +172,23 @@ def detect_unrepresented_topics(vault: Path) -> list[dict[str, str]]:
         for path in dir_path.glob("*.md"):
             existing.add(path.stem)
 
-    # Scan recent sources for concepts/entities not in taxonomy
+    # Scan recent sources for CJK terms and capitalized English terms
     freq: dict[str, int] = {}
     sources_dir = vault / "wiki" / "sources"
     if not sources_dir.exists():
         return []
     for path in sorted(sources_dir.glob("*.md")):
         text = path.read_text(encoding="utf-8")
-        meta, body = parse_frontmatter(text)
-        slug = path.stem
-        # Use a minimal Article to extract concepts/entities
-        article = Article(
-            title=meta.get("title", "").strip('"') or slug,
-            author=meta.get("author", ""),
-            date=meta.get("date", ""),
-            source=meta.get("source", ""),
-            body=body,
-            src_dir=vault,
-            md_path=path,
-        )
-        for name in extract_concepts(article, limit=5):
-            if name not in existing:
+        plain = body_text(text)
+        # Extract CJK bigrams (2-4 chars)
+        cjk_terms = re.findall(r"[一-鿿]{2,4}", plain)
+        # Extract capitalized English terms (2+ chars)
+        en_terms = re.findall(r"\b[A-Z][A-Za-z]{1,}\b", plain)
+        seen_in_doc: set[str] = set()
+        for name in cjk_terms + en_terms:
+            if name not in existing and name not in seen_in_doc:
                 freq[name] = freq.get(name, 0) + 1
-        for name in extract_entities(article, limit=5):
-            if name not in existing:
-                freq[name] = freq.get(name, 0) + 1
+                seen_in_doc.add(name)
 
     return [
         {"term": term, "mention_count": str(count), "reason": f"在 {count} 篇来源中出现但无对应概念/实体页"}

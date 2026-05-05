@@ -1,378 +1,187 @@
 # Obsidian Wiki Skill
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.en.md) | [简体中文](README.md)
 
-**Compile external knowledge into Obsidian, building a searchable, reasonable, evolvable personal knowledge operating system.**
+**把外部知识编译进 Obsidian，构建个人知识操作系统。**
 
-Not one-off summarization — sediment everything you read into two layers:
+不是做一次性摘要——每次入库，整个知识库产生新的连接、新的问题、新的视角。写入成本可见，读出价值更可见。
 
 ```
-raw/    ← Immutable source evidence (ultimate ground truth)
-wiki/   ← AI-compiled knowledge layer (evolvable, searchable, outputtable)
+raw/    ← 不可变原始证据（最终事实来源）
+wiki/   ← AI 编译知识层（可演化、可检索、可输出）
 ```
 
-Driven by Claude Code conversations, Python scripts handle the filesystem, Obsidian provides browsing and graph views.
+设计思想参考 [Karpathy 的 llm-wiki 方法论](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)：ingest 是编译而不是归档，知识的价值在于可积累、可关联、可演化。
 
-Design philosophy references [Karpathy's llm-wiki methodology](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): ingest is compilation not archiving, LLM compiles raw material into a persistent Wiki, prefer links over duplication, knowledge value lies in being accumulative, relatable, and evolvable.
-
-## Attachment Examples
-
-The repository includes a graph UI preview so the GitHub homepage can show a concrete attachment-style example instead of only describing it:
-
-![Knowledge graph preview](docs/assets/knowledge-graph-screenshot.png)
-
-This asset is useful for showing graph output presentation on the repository homepage.
+> **产品概述**：[docs/product-overview.html](docs/product-overview.html)（浏览器打开，含架构图、三阶段模式、核心能力、价值分析）
 
 ---
 
-## Why Build This
+## 这个工具解决什么问题
 
-Personal knowledge bases have a common failure mode: after importing hundreds of articles, maintenance stops within three months because **the cost of writing is visible, but the value of reading is not**.
+个人知识库的普遍失败模式：导入几百篇文章后三个月就停止维护——因为**写入的成本是可见的，读出的价值却不是**。
 
-This skill tries to reverse that direction — after each ingest, the knowledge base isn't just "one more article", but:
+Obsidian Wiki Skill 扭转了这个方向。每次入库，知识库不只是"多了一篇"，而是：
 
-- Automatically detects this article's **impact on your existing stances** (reinforce / contradict / extend)
-- Automatically associates content with **existing open questions** (open question advances → partial → resolved)
-- Converts to **directly usable output** under 8 query modes (briefing / meeting materials / article drafts / rebuttal materials)
-- Supports 9-phase **hypothesis-driven deep research**, online verification, structured reports with evidence labels
-- Displays an **impact report** after ingest: cross-domain insights, open questions, stance impacts — not just "write complete"
+- **自动检测这篇文章对你现有立场的影响**（reinforce / contradict / extend）
+- **自动将内容与已有开放问题关联**（open question 推进 → partial → resolved）
+- **自动检测是否值得启动深度研究**（积累矛盾、跨域碰撞、知识缺口）
+- **自动触发跨域联想**（bridge_logic → migration_conclusion，不只是"相似"而是"可迁移策略"）
+
+每次入库，知识库整体升级。
 
 ---
 
-## Core Capabilities
+## 架构设计
 
-### 📥 Unified Multi-Source Ingest
+### LLM 优先，脚本做 I/O
 
-| Source | Support |
-|--------|---------|
-| WeChat public account articles | ✅ |
-| Generic web pages | ✅ |
-| YouTube / Bilibili / Douyin videos (subtitles first, ASR fallback) | ✅ |
-| Video collections/channels (checkpoint resume + cooldown protection) | ✅ |
-| Local Markdown / PDF / HTML / TXT | ✅ |
-| Plain text paste | ✅ |
+LLM 做语义判断（相关来源识别、主张关系分析、综合内容生成），脚本做机械操作（文件读写、索引构建、PDF 生成）。核心 Python 依赖为零，全部 stdlib。
 
-Ingest automatically performs **domain-first routing**: detects content topic domains, auto-matches each vault's `purpose.md` focus areas, selects the vault with highest overlap. No need for users to choose repeatedly.
+### 三阶段统一模式
 
-### 🗺️ Knowledge Layer Structure
+所有维护流程遵循同一模式：
 
 ```
-wiki/
-  briefs/       ← One-sentence conclusion + key points (quick browsing layer)
-  sources/      ← Core summary + associations + claims (distillation layer)
-  concepts/     ← Concept pages (cross-source aggregation, upgraded to official node after ≥2 source mentions)
-  entities/     ← Entity pages (people/companies/products/methods)
-  domains/      ← Domain pages (topic area boundaries and navigation)
-  syntheses/    ← Synthesis analysis pages (cross-source synthesis)
-  questions/    ← Question tracking (open → partial → resolved → dropped)
-  stances/      ← Stance pages (my current judgment on X + evidence)
-  comparisons/  ← Structured comparisons (A vs B: dimensions + pros/cons + overall judgment)
-  outputs/      ← Temporary work products (graph-hidden, don't pollute main knowledge layer)
+脚本收集数据 → LLM 语义判断 → 脚本执行写入
 ```
 
-**Fidelity ranking**: `raw/articles/` > `wiki/sources/` > `wiki/briefs/`
+10 份结构化 Prompt 约束文件控制 LLM 行为：`ingest_compile_v2`（入库编译）、`ingest_impact`（影响分析）、`claim_evolution`（主张关系）、`lint_semantic`（健康检查）、`synthesis_refresh`（综合刷新）、`review_queue`（审核排序）、`review_sweep`（自动清理）、`insight_detection`（洞见识别）、`query_synthesis`（查询验证）、`research_hypothesis`（研究假说）。
 
-**Page status lifecycle**: `seed` → `developing` (≥1 reference) → `mature` (≥3 references) → `evergreen` (≥6 references). Status auto-upgrades on each ingest.
+### 质量控制
 
-### 🔍 8 Query Output Modes
+- **成熟度门槛**：≥2 来源引用才建正式页面，避免孤证污染知识层
+- **风险分级**：Low（自动执行）/ Medium（展示结果，用户确认）/ High（需用户明确批准）
+- **Two-Step CoT Compile**：先提取事实，再结构化编译，两次 LLM 调用保证入库质量
+- **Schema 自动修正**：V2.0 compile JSON 嵌套错误、枚举偏差自动修正，不需手动修复
+
+---
+
+## 核心差异化
+
+### 多源统一接入
+
+微信公众号、通用网页、YouTube / Bilibili / 抖音（字幕优先，ASR fallback）、视频合集 / 频道（断点续跑 + 冷却保护）、本地 Markdown / PDF / HTML / TXT / DOCX / PPTX / XLSX / EPUB、直接粘贴纯文本——统一归一化为 Article 结构，域优先路由自动匹配 vault。
+
+### 长文本分块精读（Map-Reduce）
+
+长文档自动分块 → 逐块 LLM 提取 → 跨块综合。精读版 claim 数量是粗读版的 9 倍。自动阈值 >800 行，`--chunk-size` 可调，7 种来源类型全覆盖。后端 raw 文件层面操作，与前端来源类型完全解耦。
+
+### Obsidian 原生知识图谱
+
+拒绝花哨炫技。Mermaid 静态图直接在 Obsidian 内渲染，Louvain 社区分组 + 度数剪枝自动化关系净化。主图谱仅含 concepts / entities / domains / syntheses，域子图页面按领域筛选解决大图谱噪音问题。
+
+### Brief 认知压缩报告
+
+7 种文章类型自适应分析，产出 6 维骨架：生成力叙事、数据、推演、失效信号、方法论评估、隐性假设。附 40 条主张清单 + 置信度标注 + 来源溯源。自动生成 PDF。
+
+### Deep Research 深度研究报告
+
+推理驱动的 8 阶段协议，横纵双轴分析：纵向追时间深度（起源→演进→决策逻辑→阶段划分），横向追同期广度（竞品对比→生态位→趋势判断）。产出叙事驱动的结构化报告 + PDF，所有断言携带证据标签。
+
+### 5 项质量门控
+
+深度研究报告自动执行 5 项检验：叙事完整性、决策逻辑、反面证据、证据标签、边界条件。结果作为附录写入报告末尾。
+
+### 置信度与证据体系
+
+每条断言标注 `[Fact]` / `[Inference]` / `[Assumption]` / `[Hypothesis]` / `[Disputed]` / `[Gap]`。假说可被证伪，置信度随新证据升降。`grounding_quote` 回溯原文验证，ASR/PDF 容差匹配。
+
+### 对话洞见捕获
+
+LLM 在回答用户问题时自动判断问答价值（10 信号加权评分，阈值 >= 3 分），有价值的洞见自动写入 `wiki/outputs/`。用户只需说"沉淀"即可入库。
+
+### 口语化查询 + 10 种输出格式
+
+用户说自然语言，LLM 理解意图、调用检索、综合答案、选择格式。零认知成本：
+
+```
+用户："什么是 BEV 感知？"              → 快速了解：3-5 句要点 + 来源
+用户："准备开会讨论端到端自动驾驶"       → 认知简报：要点 + 反面 + 待讨论问题
+用户："对比 BEV 和纯视觉方案"           → 对比分析：对比表 + 关键差异
+用户："深入研究端到端自动驾驶量产可行性"  → 推理驱动 8 阶段 + 横纵双轴分析
+```
+
+10 种输出模式：快速了解、会议准备、对比分析、深度综合、写文章、学习路径、会议讨论、整理素材、深度研究、自动路由。
+
+### 自动维护
+
+- **健康评分**：入库后自动检查，评分下降时通知
+- **Review Sweep**：自动清理已过时的待处理 output（规则匹配 + LLM 语义判断）
+- **综合刷新**：新来源晚于综合页时自动建议刷新
+- **维护建议**：`stale_report.py --auto-suggest` 输出结构化建议，按严重程度分级
+
+---
+
+## 快速上手
 
 ```powershell
-python scripts/wiki_query.py "<question>" --mode <mode> --vault <path>
-```
-
-| Mode | Use case | Output |
-|------|----------|--------|
-| `brief` | Quick understanding | Source excerpts |
-| `briefing` | Pre-meeting prep | Structured briefing: sources + claims + controversies + open questions + stances |
-| `draft-context` | Feed to LLM for secondary analysis | Material pack with `[[ref]]` backlinks |
-| `contradict` | Find counter-arguments | Strongest rebuttal + steel-man |
-| `digest --deep` | Deep research | Multi-source report: background + viewpoints + comparison + unresolved questions |
-| `digest --compare` | Tech route comparison | Markdown comparison table |
-| `digest --timeline` | Track development trajectory | Mermaid timeline |
-| `essay` | Write an article | Draft with arguments + source citations (with `[[ref]]`) |
-| `reading-list` | Systematic learning | Topologically sorted reading path |
-| `talk-track` | Meeting | Core arguments + rebuttals + discussion questions |
-
-### 📊 Knowledge Graph (Three Forms)
-
-| Graph | Generation | Usage |
-|-------|-----------|-------|
-| `wiki/graph-view.md` | Mermaid static graph (≤30 node degree pruning) | Render directly in Obsidian |
-| `wiki/typed-graph.md` | Typed edges (supports/contradicts/answers/evolves) | `--typed-edges` flag |
-| Interactive HTML | D3.js + Louvain community detection + edge weights | Open in browser |
-
-Graph noise reduction convention: `raw/articles/`, `sources/`, `briefs/`, `outputs/` don't enter the main graph; `concepts/entities` need ≥2 source references to enter the main graph.
-
-### 🔬 Deep Research
-
-Hypothesis-driven 9-phase research protocol, combining vault's existing knowledge with online search, producing structured reports with evidence labels.
-
-**Trigger words**: `deep research X` / `深入研究 X` / `系统分析 X`
-
-```
-Phase 0: Context collection (hot.md + existing stances/questions)
-Phase 1: Intent expansion (uncover the real question)
-Phase 2: Hypothesis formation (2-4 falsifiable hypotheses)
-Phase 3: Vault evidence classification (F/I/A nodes)
-Phase 4: Online research (adaptive rounds, evidence sufficiency gating)
-Phase 5: External fact calibration
-Phase 6: Root question excavation
-Phase 7: Scenario stress testing
-Phase 8: Pre-mortem (failure mode analysis)
-Phase 9: Convergence + Why/What/How/Trace report
-```
-
-All assertions carry evidence labels: `[Fact]` / `[Inference]` / `[Assumption]` / `[Hypothesis X%]` / `[Disputed]` / `[Gap]`
-
-### 🔄 Post-Ingest Impact Report
-
-After each ingest completes, the host agent must display an impact report (not just "write complete"):
-
-```
-Ingest complete: {title} → {vault name}
-Quick read: [[briefs/{slug}]]
-Compile quality: {structured | raw-extract}
-New: {N concept candidates, N entity candidates, N open questions}
-Cross-domain insights: {concept → domain mapping, bridge_logic}  ← high-signal only
-Open questions: {question list}                                  ← high-signal only
-```
-
----
-
-## Quick Start
-
-### 1. Install dependencies
-
-```powershell
-# Check and install all dependencies (add --china for Chinese mirrors)
+# 1. 安装依赖（中国用户加 --china）
 python scripts/check_deps.py --install
-# Chinese mirror
-python scripts/check_deps.py --install --china
-```
 
-Dependency groups: `core` / `wechat` / `video` / `video_asr` / `pdf` / `web`
-
-WeChat fetching depends on [wechat-article-for-ai](https://github.com/bzd6661/wechat-article-for-ai) (Camoufox anti-detection browser).
-
-### 2. Initialize Vault
-
-```powershell
+# 2. 初始化 Vault
 python scripts/init_vault.py --vault "D:\Obsidian\MyVault"
-```
 
-### 3. Ingest
+# 3. 入库（Claude Code 交互式推荐）
+# 在 Claude Code 对话里直接给一个 URL，说"入库"即可
 
-```powershell
-# Heuristic ingest (no extra API needed)
-python scripts/wiki_ingest.py --vault "D:\Vault" --no-llm-compile "https://mp.weixin.qq.com/s/..."
+# 4. 查询（口语化沟通即可）
+# 用户只需说自然语言："端到端自动驾驶的技术路线是什么？"
 
-# YouTube video
-python scripts/wiki_ingest.py --vault "D:\Vault" --no-llm-compile "https://www.youtube.com/watch?v=..."
-
-# Local file
-python scripts/wiki_ingest.py --vault "D:\Vault" --no-llm-compile "D:\notes\article.pdf"
-```
-
-**Claude Code interactive ingest (recommended, higher quality)**:
-
-Just give a URL in Claude Code conversation and say "ingest" or "落盘". The skill automatically:
-1. Fetches content → writes to `raw/`
-2. Generates lean compile context (`--prepare-only --lean`, ~10KB, ~80% context reduction)
-3. Claude Code generates v2 structured JSON in conversation (with knowledge_proposals / cross_domain_insights / claim_inventory / open_questions)
-4. `apply_compiled_brief_source.py` writes to all `wiki/` layers, refreshes taxonomy/synthesis/delta
-5. Displays post-ingest impact report
-
-### 4. Query
-
-```powershell
-# Pre-meeting prep
-python scripts/wiki_query.py "end-to-end autonomous driving tech routes" --mode briefing --vault "D:\Vault"
-
-# Article material
-python scripts/wiki_query.py "BEV vs pure vision core debate" --mode essay --vault "D:\Vault"
-
-# Strongest rebuttal
-python scripts/wiki_query.py "contradict pure-vision is safe enough" --mode contradict --vault "D:\Vault"
-```
-
-### 5. Routine maintenance
-
-```powershell
-# Health check
+# 5. 日常维护
 python scripts/wiki_lint.py --vault "D:\Vault"
-
-# Blind-spot detection (which domains lack questions/stances/syntheses)
 python scripts/stale_report.py --vault "D:\Vault" --blind-spots
+python scripts/stale_report.py --vault "D:\Vault" --auto-suggest
+python scripts/review_queue.py --vault "D:\Vault" --sweep
 
-# Refresh synthesis pages
-python scripts/refresh_synthesis.py --vault "D:\Vault"
-
-# Knowledge graph (Mermaid + typed edges)
-python scripts/export_main_graph.py --vault "D:\Vault" --typed-edges
-
-# Review queue
-python scripts/review_queue.py --vault "D:\Vault" --write
-
-# Archive duplicate outputs
-python scripts/archive_outputs.py --vault "D:\Vault" --apply
+# 6. 语义索引（入库后自动重建，也可手动触发）
+python scripts/wiki_index_v2.py --vault "D:\Vault" --rebuild
+python scripts/wiki_retrieve.py --vault "D:\Vault" --query "BEV感知" --top-k 5
 ```
 
----
-
-## Architecture Overview
-
-```
-obsidian-wiki-skill/
-  SKILL.md              ← 56 lines, host-agent routing table (loads references/ by task condition)
-  manifest.yaml         ← 6 sub-skill definitions (ingest/review/query/helper/video/deep-research)
-
-  scripts/
-    wiki_ingest.py      ← Main orchestrator (domain-first routing + multi-source adaptation)
-    wiki_query.py       ← Query entrypoint (8 output modes)
-    wiki_lint.py        ← Health check
-    llm_compile_ingest.py ← LLM compile (--prepare-only --lean interactive mode, ~10KB payload)
-    apply_compiled_brief_source.py ← Write back host-agent structured JSON
-
-    adapters/           ← Source adapter package (wechat/web/video/local/text/collection/...)
-    pipeline/           ← Pipeline core (fetch/ingest/compile/apply/output/...)
-    kwiki/              ← CLI entrypoint (python -m kwiki <stage>)
-
-  references/           ← Per-topic docs (lazy-loaded, not all in context)
-    workflow.md         ← pipeline + vault structure + page status lifecycle
-    interaction.md      ← User dialog routing + post-ingest guidance template
-    pipeline-scripts.md ← ingest / compile / apply script details
-    deep-research-protocol.md ← 9-phase research protocol
-    stance-schema.md    ← Stance page template
-    question-schema.md  ← Question tracking template
-    output-modes.md     ← 8 query mode descriptions
-    examples/           ← agent_interactive_compiled_result.json and other examples
-    ...
-
-  docs/SPEC.md          ← Full product & technical specification (not loaded at runtime)
-```
-
-### Execution Mode Comparison
-
-| Mode | Compiler | Extra API needed | Quality | Use case |
-|------|----------|-----------------|---------|----------|
-| **Claude Code interactive** | Claude Code itself | No | Highest | Daily ingest, single-article deep read |
-| **Script direct API** | External OpenAI-compatible endpoint | Yes | Depends on model | Batch processing, scheduled tasks |
-| **Heuristic (no-llm)** | Rule extraction | No | Basic | Quick first-pass, offline use |
-
-### v2 Compile Output Fields
-
-Interactive ingest uses v2 schema; host-agent JSON includes:
-
-| Field | Description |
-|-------|-------------|
-| `compile_target` | Compile target metadata (vault, slug, title, author, date) |
-| `document_outputs` | brief (one_sentence + key_points) + source (core_summary + contradictions + reinforcements) |
-| `knowledge_proposals` | domains / concepts / entities each with action (link_existing / create_candidate / no_page) and confidence |
-| `update_proposals` | Update suggestions for existing pages (written to `wiki/outputs/` delta drafts, not directly overwritten) |
-| `claim_inventory` | Core claim list with claim_type / confidence / verification_needed |
-| `open_questions` | Trackable questions derived from content |
-| `cross_domain_insights` | Cross-domain analogical reasoning (mapped_concept → target_domain + bridge_logic + potential_question) |
-| `stance_impacts` | Impacts on existing stance pages |
-| `review_hints` | Review priority and suggestions |
-
-**Note**: v2 JSON must have `"version": "2.0"` as a top-level key for `apply_compiled_brief_source.py` to identify the schema version. `core_summary` must be a list of strings, not a single string.
+微信抓取依赖上游 [wechat-article-for-ai](https://github.com/bzd6661/wechat-article-for-ai)。GitHub 发布版不再内置这个上游仓库；请按 [references/setup.md](references/setup.md) 的说明安装到 `.tools/wechat-article-for-ai`，或通过 `KWIKI_WECHAT_TOOL_DIR` 指向你已有的克隆目录。
 
 ---
 
-## Requirements
+## 适合谁
 
-- **OS**: Windows (PowerShell), Linux/Mac unofficially supported
-- **Python**: 3.11+
-- **Obsidian Desktop**: Local vault
+✅ 希望把微信 / 视频 / 网页 / 文件沉淀进 Obsidian，而不只是做一次性摘要
+✅ 需要跟踪某个领域的最新进展，形成自己的立场和认知
+✅ 经常需要为会议、写作、决策快速组织已有知识
+✅ 使用 Claude Code 做日常工作，需要一个可持久化的知识底座
+✅ 想在多 vault 场景下自动路由，不同主题知识各归其位
 
-Core Python dependencies are zero (all stdlib). Install per source type as needed:
-
-| Source | Extra dependencies |
-|--------|-------------------|
-| WeChat public accounts | `camoufox[geoip]` + `markdownify` + `beautifulsoup4` + `httpx` |
-| Video (subtitles) | `yt-dlp` |
-| Video (no subtitle ASR) | `faster-whisper` |
-| PDF | `pypdf` |
-| Generic web | `baoyu-url-to-markdown` (npm) |
-
-### Environment Variables
-
-New env vars use `KWIKI_*` prefix; old `WECHAT_WIKI_*` prefix auto-compatible via `env_compat.py`:
-
-| New name | Old name | Description |
-|-----------|----------|-------------|
-| `KWIKI_WEB_ADAPTER_BIN` | `WECHAT_WIKI_WEB_ADAPTER_BIN` | Web adapter command |
-| `KWIKI_VIDEO_ADAPTER_BIN` | `WECHAT_WIKI_VIDEO_ADAPTER_BIN` | Video adapter command |
-| `KWIKI_API_KEY` | `WECHAT_WIKI_API_KEY` | LLM API key |
-| `KWIKI_COMPILE_MODEL` | `WECHAT_WIKI_COMPILE_MODEL` | LLM compile model |
-| `KWIKI_WECHAT_TOOL_DIR` | `WECHAT_ARTICLE_FOR_AI_DIR` | wechat-article-for-ai path |
-| `KWIKI_DEPS_DIR` | `WECHAT_ARTICLE_PYTHONPATH` | Python dependency path |
-
-Full env var list in [references/setup.md](references/setup.md).
+❌ 只需要一次性网页摘要
+❌ 不使用 Obsidian
+❌ 不接受本地脚本 + 文件系统工作流
 
 ---
 
-## Common Failures
+## 环境要求
 
-| Problem | Troubleshooting |
-|---------|----------------|
-| WeChat URL failure | Check `.tools\wechat-article-for-ai` exists, `KWIKI_WECHAT_TOOL_DIR` is set |
-| Web URL failure | Check `baoyu-url-to-markdown` is on PATH, classify as `browser_not_ready` or `network_failed` |
-| Bilibili HTTP 412 | Login state issue, check `cookies.txt` |
-| Repeated collection failures | Check `wiki/import-jobs/*.md` for `cooldown_until` |
-| v2 JSON apply error | Check top-level `"version": "2.0"` exists, `core_summary` is a list |
+- **OS**：Windows（PowerShell），Linux/Mac 非官方支持
+- **Python**：3.11+
+- **Obsidian Desktop**：本地 vault
+- **Claude Code**：推荐（交互式入库质量最高）
 
----
-
-## Tests
-
-```powershell
-python -m pytest tests/ -q
-```
-
-93 passed, 4 pre-existing failures (due to wechat-article-for-ai not installed).
+核心 Python 依赖为零（全部 stdlib）。各来源类型按需安装，详见 [docs/SPEC.md](docs/SPEC.md)。
 
 ---
 
-## Documentation Index
+## 文档索引
 
-| Document | Contents |
-|----------|----------|
-| [docs/SPEC.md](docs/SPEC.md) | Full product & technical specification |
-| [references/setup.md](references/setup.md) | Environment config & dependency installation (including China mirror guide) |
-| [references/workflow.md](references/workflow.md) | Operating modes, pipeline, vault structure, page conventions, status lifecycle |
-| [references/interaction.md](references/interaction.md) | User dialog routing, post-ingest guidance template, status vocabulary |
-| [references/pipeline-scripts.md](references/pipeline-scripts.md) | ingest / compile / apply script details |
-| [references/deep-research-protocol.md](references/deep-research-protocol.md) | 9-phase deep research protocol |
-| [references/output-modes.md](references/output-modes.md) | 8 query mode details |
-| [references/stance-schema.md](references/stance-schema.md) | Stance page template & state machine |
-| [references/question-schema.md](references/question-schema.md) | Question tracking template |
-| [references/video-rules.md](references/video-rules.md) | Video processing & collection protection rules |
-| [references/cross-project-access.md](references/cross-project-access.md) | Cross-project read-only vault access |
-
----
-
-## Design Principles
-
-**Two-layer evidence principle**: `raw/` is the ultimate evidence layer, permanently immutable; `wiki/` is the evolvable compilation layer, iteratively maintained. Exact numbers/dates/verbatim quotes must be verified against `raw/`; understanding and analysis use `wiki/`.
-
-**Host-agent first**: Claude Code is the primary entry, scripts are support. AI does semantic understanding, scripts do file operations. User experience is conversation, not command-line sequences.
-
-**Concept maturity threshold**: concept/entity pages are not created for "mentioned once" — must have ≥2 stable source references to upgrade to an official graph node, avoiding knowledge graph pollution.
-
----
-
-## Who Is This For
-
-✅ Want to sediment WeChat/video/web/file content into Obsidian, not just one-off summaries  
-✅ Need to track latest developments in a domain, forming own stances and understanding  
-✅ Frequently need to quickly organize existing knowledge for meetings, writing, decisions  
-✅ Use Claude Code for daily work, need a persistable knowledge foundation  
-✅ Want automatic routing in multi-vault scenarios, different topics going to their own places  
-
-❌ Only need one-off web page summaries  
-❌ Don't use Obsidian  
-❌ Don't accept local scripts + filesystem workflows  
+| 文档 | 内容 |
+|------|------|
+| [docs/product-overview.html](docs/product-overview.html) | 产品概述（架构图、核心能力、价值分析，浏览器打开） |
+| [docs/SPEC.md](docs/SPEC.md) | 设计哲学、架构、完整功能规格 |
+| [references/setup.md](references/setup.md) | 环境配置与依赖安装（含中国镜像指南） |
+| [references/workflow.md](references/workflow.md) | 操作模式、pipeline、vault 结构、页面约定 |
+| [references/interaction.md](references/interaction.md) | 用户对话路由、入库后引导模板 |
+| [references/ingest-guide.md](references/ingest-guide.md) | 入库行为指南（五阶段流水线 + 编译策略） |
+| [references/query-guide.md](references/query-guide.md) | 查询行为指南（智能检索 + 综合 + 9 种输出格式） |
+| [references/research-guide.md](references/research-guide.md) | 深度研究行为指南（推理驱动 8 阶段 + 横纵双轴分析） |
+| [references/maintenance-guide.md](references/maintenance-guide.md) | 维护行为指南（lint / review / archive / graph） |
+| [references/deep-research-protocol.md](references/deep-research-protocol.md) | 推理驱动 8 阶段协议 + 横纵双轴分析详情 |
 
 ---
 

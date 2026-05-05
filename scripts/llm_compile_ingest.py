@@ -13,6 +13,8 @@ import urllib.request
 from pathlib import Path
 
 from env_compat import resolve_env
+from pipeline.types import DEFAULT_DOMAINS, DOMAIN_MIN_SCORE
+from pipeline.encoding_fix import fix_windows_encoding
 
 
 FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.S)
@@ -22,18 +24,21 @@ WIKILINK = re.compile(r"\[\[([^|\]]+)(?:\|([^\]]+))?\]\]")
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 JSON_BLOCK = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.S)
 
-DEFAULT_DOMAINS = {
-    "自动驾驶": ["自动驾驶", "智驾", "AIDV", "FSD", "L2", "L3", "EEA", "端到端", "BEV"],
-    "AI 工程": ["Claude", "Codex", "LLM", "RAG", "Agent", "模型", "推理", "Transformer"],
-    "机器人": ["机器人", "具身", "机械臂"],
-    "商业分析": ["公司", "市场", "竞争", "商业", "投资", "融资"],
-}
-DOMAIN_MIN_SCORE = {
-    "自动驾驶": 4,
-    "AI 工程": 4,
-    "机器人": 4,
-    "商业分析": 3,
-}
+
+def default_runtime_dir() -> Path:
+    candidates: list[Path] = []
+    configured = resolve_env("KWIKI_RUNTIME_DIR")
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.append(Path.cwd() / ".runtime-fetch")
+    candidates.append(Path(__file__).resolve().parent.parent / ".runtime-fetch")
+    for root in candidates:
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            return root
+        except OSError:
+            continue
+    raise OSError("No writable runtime directory available.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,9 +51,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-url", default="", help="Original article URL.")
     parser.add_argument("--slug", help="Article slug. Defaults to raw filename stem.")
     parser.add_argument("--model", help="Override model name.")
-    parser.add_argument("--schema-version", choices=["1.0", "2.0"], default="2.0", help="Compile output schema version.")
     parser.add_argument("--prepare-only", action="store_true", help="Only emit compile context and prompts for Codex/Claude-style interactive compilation.")
     parser.add_argument("--lean", action="store_true", help="In prepare-only mode, omit system_prompt/user_prompt from output and filter noisy synthesis excerpts. Reduces context payload by ~60%%.")
+    parser.add_argument("--two-step", action="store_true", help="Use two-step CoT ingest: extract facts first, then compile wiki structure constrained by facts.")
+    parser.add_argument("--extract-facts-only", action="store_true", help="Only run Step 1 (fact extraction) without Step 2 (compile).")
+    parser.add_argument("--chunked", action="store_true", help="Split large documents into chunks by chapter headings and generate per-chunk compile payloads. Outputs JSON file with chunk list.")
+    parser.add_argument("--chunk-size", type=int, default=500, help="Max lines per chunk when no chapter headings are found (default: 500).")
+    parser.add_argument("--chunk-output", type=Path, default=None, help="Path to write chunked payload JSON file. Defaults to .runtime-fetch/compile-payloads/{slug}_chunks.json.")
     return parser.parse_args()
 
 
@@ -77,26 +86,35 @@ def plain_text(md: str) -> str:
     return text.strip()
 
 
-def detect_domains(title: str, body: str) -> list[str]:
-    scores: dict[str, int] = {}
-    for domain, keywords in DEFAULT_DOMAINS.items():
-        score = 0
-        for keyword in keywords:
-            if keyword in title:
-                score += 3
-            if keyword in body:
-                score += 2 + min(body.count(keyword), 3)
-        scores[domain] = score
-    found = [domain for domain, score in scores.items() if score >= DOMAIN_MIN_SCORE.get(domain, 3)]
-    return found[:3]
-
-
 def page_excerpt(path: Path, limit: int = 1200) -> str:
     if not path.exists():
         return ""
     text = path.read_text(encoding="utf-8")
     _, body = parse_frontmatter(text)
     return plain_text(body)[:limit].strip()
+
+
+def detect_domains(title: str, body: str) -> list[str]:
+    """Detect which knowledge domains the article belongs to by keyword matching.
+
+    Scans title + body against DEFAULT_DOMAINS keyword lists.
+    Returns domains whose match count meets DOMAIN_MIN_SCORE threshold.
+    Title matches are weighted 3x.
+    """
+    combined = f"{title} {body}"
+    results: list[str] = []
+    for domain, keywords in DEFAULT_DOMAINS.items():
+        score = 0
+        for kw in keywords:
+            # Title matches count 3x
+            if kw.lower() in title.lower():
+                score += 3
+            # Body matches count 1x (limit scan to first 5000 chars for speed)
+            score += combined[:5000].lower().count(kw.lower())
+        min_score = DOMAIN_MIN_SCORE.get(domain, 3)
+        if score >= min_score:
+            results.append(domain)
+    return results if results else ["待归域"]
 
 
 _SYNTHESIS_NOISE_HEURISTICS = [
@@ -215,19 +233,8 @@ def collect_related_pages(
     return result
 
 
-def prompt_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "references" / "prompts" / "ingest_compile_prompt.md"
-
-
 def prompt_path_v2() -> Path:
     return Path(__file__).resolve().parents[1] / "references" / "prompts" / "ingest_compile_prompt_v2.md"
-
-
-def load_prompt() -> str:
-    path = prompt_path()
-    if not path.exists():
-        raise RuntimeError(f"Prompt file not found: {path}")
-    return path.read_text(encoding="utf-8")
 
 
 def load_prompt_v2() -> str:
@@ -237,36 +244,15 @@ def load_prompt_v2() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def build_user_prompt(
-    title: str,
-    author: str,
-    date: str,
-    source_url: str,
-    raw_body: str,
-    context: dict[str, object],
-) -> str:
-    return "\n".join(
-        [
-            "请基于以下输入编译单篇来源。",
-            "",
-            "## 来源元数据",
-            f"- 标题：{title}",
-            f"- 作者：{author or '未知'}",
-            f"- 日期：{date or '未知'}",
-            f"- 链接：{source_url or '未知'}",
-            "",
-            "## 当前相关 wiki 上下文",
-            f"- 旧 brief：{context.get('existing_brief') or '无'}",
-            f"- 旧 source：{context.get('existing_source') or '无'}",
-            f"- 规则检测主题域：{', '.join(context.get('detected_domains', [])) or '无'}",
-            "",
-            "## 相关主题页上下文",
-            json.dumps(context.get("related_domains", {}), ensure_ascii=False, indent=2),
-            "",
-            "## 原文正文",
-            raw_body,
-        ]
-    )
+def fact_extraction_prompt_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "references" / "prompts" / "fact_extraction_prompt.md"
+
+
+def load_fact_extraction_prompt() -> str:
+    path = fact_extraction_prompt_path()
+    if not path.exists():
+        raise RuntimeError(f"Fact extraction prompt not found: {path}")
+    return path.read_text(encoding="utf-8")
 
 
 def build_user_prompt_v2(
@@ -276,6 +262,8 @@ def build_user_prompt_v2(
     source_url: str,
     raw_body: str,
     context: dict[str, object],
+    *,
+    fact_inventory: dict[str, object] | None = None,
 ) -> str:
     parts = [
         "请基于以下输入执行 v2 编译。",
@@ -294,6 +282,16 @@ def build_user_prompt_v2(
             "如果内容与下方关注领域相关，优先提取相关实体/话题；排除范围内的内容仅标注但不创建独立页面。",
             purpose_text,
         ])
+    if fact_inventory:
+        parts.extend([
+            "",
+            "## 事实清单（fact_inventory）",
+            "以下是从事原文中提取的原子事实和论证结构。你的编译输出必须受此约束：",
+            "- knowledge_proposals 中的每条建议必须引用 fact_inventory 中的事实 ID",
+            "- claim_inventory 不得超出 atomic_facts 的范围",
+            "- 如果某个提议无法锚定到 fact_inventory 中的事实，降级为 assumption",
+            json.dumps(fact_inventory, ensure_ascii=False, indent=2),
+        ])
     parts.extend([
         "",
         "## 现有上下文",
@@ -303,55 +301,6 @@ def build_user_prompt_v2(
         raw_body,
     ])
     return "\n".join(parts)
-
-
-def prepare_compile_payload(
-    *,
-    vault: Path,
-    raw_path: Path,
-    title: str,
-    author: str,
-    date: str,
-    source_url: str,
-    slug: str,
-) -> dict[str, object]:
-    raw_text = raw_path.read_text(encoding="utf-8")
-    _, raw_body = parse_frontmatter(raw_text)
-    context = collect_context(vault, slug, title, raw_body)
-    system_prompt = load_prompt()
-    user_prompt = build_user_prompt(title, author, date, source_url, raw_body, context)
-    return {
-        "mode": "agent-interactive-compile",
-        "metadata": {
-            "title": title,
-            "author": author,
-            "date": date,
-            "source_url": source_url,
-            "slug": slug,
-            "vault": str(vault),
-            "raw": str(raw_path),
-        },
-        "context": context,
-        "system_prompt": system_prompt,
-        "user_prompt": user_prompt,
-        "expected_output_schema": {
-            "brief": {
-                "one_sentence": "string",
-                "key_points": ["string"],
-                "who_should_read": ["string"],
-                "why_revisit": ["string"],
-            },
-            "source": {
-                "core_summary": ["string"],
-                "candidate_concepts": ["string"],
-                "candidate_entities": ["string"],
-                "domains": ["string"],
-                "knowledge_base_relation": ["string"],
-                "contradictions": ["string"],
-                "reinforcements": ["string"],
-            },
-        },
-    }
 
 
 def prepare_compile_payload_v2(
@@ -391,6 +340,303 @@ def prepare_compile_payload_v2(
         result.pop("system_prompt", None)
         result.pop("user_prompt", None)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Chunked compilation: split large documents into sections for per-chunk
+# extraction, then synthesize into a full compile JSON.
+# ---------------------------------------------------------------------------
+
+# Patterns for detecting chapter/section headings in raw markdown
+_CHAPTER_HEADING = re.compile(
+    r"^#{1,3}\s+(Chapter\s+\d+|CHAPTER\s+\d+|第\d+章|Part\s+[IVX\d]+|PART\s+[IVX\d]+|Section\s+\d+)",
+    re.M | re.I,
+)
+# Plain-text chapter headings (PDF-extracted, no # prefix)
+_PLAIN_CHAPTER = re.compile(
+    r"^(Chapter\s+\d+|CHAPTER\s+\d+|第\d+章|Part\s+[IVX\d]+|PART\s+[IVX\d]+)\b",
+    re.M | re.I,
+)
+# Generic heading pattern for fallback splitting
+_GENERIC_HEADING = re.compile(r"^#{1,4}\s+\S", re.M)
+
+
+def _split_by_headings(lines: list[str], heading_pattern: re.Pattern[str]) -> list[tuple[str, int, int]]:
+    """Split lines into chunks bounded by heading matches.
+
+    Returns list of (chunk_title, start_line_0based, end_line_exclusive).
+    Skips lines that look like table-of-contents entries (containing '...' or page numbers).
+    """
+    heading_indices = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if heading_pattern.match(stripped):
+            # Skip table-of-contents lines (contain dots leader or trailing page numbers)
+            if "..." in stripped or re.search(r"\d+\s*$", stripped):
+                continue
+            heading_indices.append(i)
+    if not heading_indices:
+        return []
+    chunks = []
+    for idx, start in enumerate(heading_indices):
+        # Extract title from heading line, strip # marks
+        title = re.sub(r"^#+\s*", "", lines[start]).strip()
+        end = heading_indices[idx + 1] if idx + 1 < len(heading_indices) else len(lines)
+        chunks.append((title, start, end))
+    return chunks
+
+
+def _split_by_line_count(lines: list[str], chunk_size: int) -> list[tuple[str, int, int]]:
+    """Split lines into fixed-size chunks when no headings are found.
+
+    For each chunk, attempt to extract a meaningful title from the first
+    non-empty line (skip blank lines and short lines < 20 chars).
+    """
+    chunks = []
+    for i in range(0, len(lines), chunk_size):
+        # Find first meaningful line in chunk for title
+        title = f"chunk_{i // chunk_size + 1}"
+        for line in lines[i:i + chunk_size]:
+            stripped = line.strip()
+            if stripped and len(stripped) >= 20 and not stripped.startswith("---"):
+                title = stripped[:80]
+                break
+        chunks.append((title, i, min(i + chunk_size, len(lines))))
+    return chunks
+
+
+def chunk_raw_document(
+    raw_body: str,
+    *,
+    chunk_size: int = 500,
+) -> list[dict[str, object]]:
+    """Split a raw document body into chunks for per-chunk extraction.
+
+    Strategy:
+      1. Try chapter/section headings first (best semantic boundaries)
+      2. Fall back to generic headings (# through ####)
+      3. Fall back to fixed line count
+
+    Each chunk dict has: chunk_id, chunk_title, chunk_body, start_line, end_line.
+    """
+    lines = raw_body.splitlines()
+
+    # Strategy 1: chapter/section headings (Markdown # prefix)
+    chunks = _split_by_headings(lines, _CHAPTER_HEADING)
+    if chunks:
+        strategy = "chapter_headings"
+    else:
+        # Strategy 2: generic headings (at least 3 to be meaningful)
+        chunks = _split_by_headings(lines, _GENERIC_HEADING)
+        if len(chunks) >= 3:
+            strategy = "generic_headings"
+        else:
+            # Strategy 3: fixed line count
+            # (plain-text chapter headings like "Chapter N" are unreliable
+            # in PDF-extracted text — they appear in cross-references too)
+            chunks = _split_by_line_count(lines, chunk_size)
+            strategy = "fixed_lines"
+
+    result = []
+    for chunk_id, (title, start, end) in enumerate(chunks, start=1):
+        body = "\n".join(lines[start:end])
+        if not body.strip():
+            continue
+        result.append({
+            "chunk_id": f"chunk_{chunk_id}",
+            "chunk_title": title,
+            "chunk_body": body,
+            "start_line": start + 1,  # 1-based for user readability
+            "end_line": end,          # 1-based inclusive
+            "line_count": end - start,
+        })
+    return result
+
+
+def prepare_chunked_payloads(
+    *,
+    vault: Path,
+    raw_path: Path,
+    title: str,
+    author: str,
+    date: str,
+    source_url: str,
+    slug: str,
+    chunk_size: int = 500,
+) -> dict[str, object]:
+    """Generate chunked compile payloads for a large document.
+
+    Returns a dict with:
+      - metadata: article metadata
+      - context: vault context (shared across all chunks)
+      - chunks: list of per-chunk payloads, each containing:
+          chunk_id, chunk_title, chunk_body, start_line, end_line,
+          system_prompt (chunk-specific), user_prompt (chunk-specific)
+      - chunk_prompt_template: template for per-chunk extraction
+      - synthesis_prompt: prompt for final synthesis across all chunks
+      - expected_output_schema_version: "2.0"
+    """
+    raw_text = raw_path.read_text(encoding="utf-8")
+    _, raw_body = parse_frontmatter(raw_text)
+    total_lines = len(raw_body.splitlines())
+
+    # Collect vault context (shared across all chunks)
+    context = collect_context(vault, slug, title, raw_body[:2000], lean=False)
+    context.update(collect_related_pages(vault, title=title, raw_body=raw_body[:2000], slug=slug, lean=False))
+
+    # Split into chunks
+    chunks = chunk_raw_document(raw_body, chunk_size=chunk_size)
+    if not chunks:
+        raise RuntimeError("Document too short to chunk — use regular compile instead.")
+
+    # Load system prompt for chunk extraction
+    system_prompt = load_prompt_v2()
+
+    # Build per-chunk user prompts
+    chunk_payloads = []
+    for chunk in chunks:
+        chunk_user_prompt = _build_chunk_user_prompt(
+            title=title,
+            author=author,
+            date=date,
+            source_url=source_url,
+            chunk_title=chunk["chunk_title"],
+            chunk_body=chunk["chunk_body"],
+            chunk_id=chunk["chunk_id"],
+            total_chunks=len(chunks),
+            context=context,
+        )
+        chunk_payloads.append({
+            "chunk_id": chunk["chunk_id"],
+            "chunk_title": chunk["chunk_title"],
+            "chunk_body": chunk["chunk_body"],
+            "start_line": chunk["start_line"],
+            "end_line": chunk["end_line"],
+            "line_count": chunk["line_count"],
+            "system_prompt": system_prompt,
+            "user_prompt": chunk_user_prompt,
+        })
+
+    # Build synthesis prompt (instructions for merging chunk results)
+    synthesis_prompt = _build_synthesis_prompt(title, len(chunks))
+
+    result = {
+        "mode": "chunked-compile",
+        "metadata": {
+            "title": title,
+            "author": author,
+            "date": date,
+            "source_url": source_url,
+            "slug": slug,
+            "vault": str(vault),
+            "raw": str(raw_path),
+            "total_lines": total_lines,
+            "total_chunks": len(chunks),
+        },
+        "context": context,
+        "chunks": chunk_payloads,
+        "synthesis_prompt": synthesis_prompt,
+        "expected_output_schema_version": "2.0",
+        "chunk_extract_schema": _chunk_extract_schema(),
+    }
+    return result
+
+
+def _build_chunk_user_prompt(
+    *,
+    title: str,
+    author: str,
+    date: str,
+    source_url: str,
+    chunk_title: str,
+    chunk_body: str,
+    chunk_id: str,
+    total_chunks: int,
+    context: dict[str, object],
+) -> str:
+    """Build a per-chunk extraction prompt."""
+    parts = [
+        f"你正在对一篇大文档的第 {chunk_id} 块（共 {total_chunks} 块）执行局部精读提取。",
+        "",
+        f"## 文档元数据",
+        f"- 标题：{title}",
+        f"- 作者：{author or '未知'}",
+        f"- 当前块：{chunk_title}（{chunk_id}/{total_chunks}）",
+        "",
+        "## 任务",
+        "对当前块的原文进行精读，提取以下结构化信息。只提取**当前块中确实出现的内容**，不要推测其他块可能包含的信息。",
+        "",
+        "## 输出格式",
+        "输出一个合法 JSON 对象（不要输出 Markdown 围栏或解释文字），结构如下：",
+        "",
+        json.dumps(_chunk_extract_schema(), ensure_ascii=False, indent=2),
+        "",
+        "## 现有上下文",
+        json.dumps({k: v for k, v in context.items() if k != "purpose"}, ensure_ascii=False, indent=2),
+        "",
+        "## 当前块原文",
+        chunk_body,
+    ]
+    return "\n".join(parts)
+
+
+def _build_synthesis_prompt(title: str, total_chunks: int) -> str:
+    """Build the final synthesis prompt that instructs LLM how to merge chunk results."""
+    return (
+        f"你已完成对「{title}」的 {total_chunks} 块逐块精读提取。现在需要将所有块的结果合成为一份完整的 V2.0 compile JSON。\n"
+        "\n"
+        "## 合成规则\n"
+        "\n"
+        "1. **骨架生成力**：从所有块的 claims 中识别反复出现的核心因果驱动因素。生成力必须满足：\n"
+        "   - 生成性：用它能推出文中关键现象\n"
+        "   - 最小性：拿掉它，有现象解释不了\n"
+        "   - 独立性：每对都能找到'一个变了另一个没变'的案例\n"
+        "   1-3根生成力，每根一段 narrative。\n"
+        "\n"
+        "2. **key_points**：从所有块的 key_points 中筛选最重要的 5-8 条。优先选择跨多个块出现的论点。\n"
+        "\n"
+        "3. **claim_inventory**：从所有块的 claims 中筛选最重要的 4-6 条。优先选择跨块 reinforce 的 claim。\n"
+        "   grounding_quote 使用该 claim 首次出现的块中的原文引用。\n"
+        "\n"
+        "4. **cross_domain_insights**：基于全部块的精读结果，寻找与 vault 已有知识的跨域联想。\n"
+        "   必须包含 bridge_logic 和 migration_conclusion。\n"
+        "\n"
+        "5. **knowledge_proposals**：基于全部块的论点和 vault 上下文，判断值得建立的概念/实体/域页。\n"
+        "\n"
+        "6. **输出必须是完整的 V2.0 compile JSON**——按 ingest_compile_prompt_v2.md 的 schema 结构。\n"
+        "   document_outputs 包含 brief 和 source；claim_inventory、knowledge_proposals 等在顶层。\n"
+    )
+
+
+def _chunk_extract_schema() -> dict[str, object]:
+    """Schema for per-chunk extraction output (lighter than full V2.0)."""
+    return {
+        "chunk_id": "chunk_1",
+        "chunk_title": "Chapter title",
+        "claims": [
+            {
+                "claim": "one-sentence claim from this chunk",
+                "claim_type": "observation | interpretation | prediction",
+                "evidence_type": "fact | inference | assumption | hypothesis",
+                "logic_risk": "none | circular | over_generalization | correlation_causation | selective_evidence",
+                "confidence": "Seeded | Preliminary | Working | Supported | Stable",
+                "grounding_quote": "exact text from this chunk (mandatory — must be found in chunk_body)",
+                "evidence": ["supporting evidence"],
+            }
+        ],
+        "key_points": [
+            "one-sentence key point from this chunk",
+        ],
+        "data_points": [
+            {"label": "metric name", "value": "metric value", "baseline": "comparison baseline"},
+        ],
+        "hidden_assumptions": [
+            "assumption this chunk's argument depends on but doesn't state",
+        ],
+        "cross_references": [
+            "references to other chunks or external concepts mentioned in this chunk",
+        ],
+    }
 
 
 def extract_json(text: str) -> dict[str, object]:
@@ -473,12 +719,37 @@ def normalize_string_list(value: object, limit: int = 8) -> list[str]:
     return normalized
 
 
+VALID_ORDINAL = {"Seeded", "Preliminary", "Working", "Supported", "Stable"}
+VALID_EVIDENCE_TYPE = {"fact", "inference", "assumption", "hypothesis", "disputed", "gap"}
+
+
 def coerce_confidence(value: object) -> str:
+    """Coerce a confidence value to an ordinal label.
+
+    Accepts the 5 ordinal labels. Falls back to 'Preliminary' for unknown values.
+    """
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized in VALID_ORDINAL:
+            return normalized
+        # Backward compat: map legacy high/medium/low
+        legacy = normalized.lower()
+        if legacy == "high":
+            return "Supported"
+        if legacy == "medium":
+            return "Working"
+        if legacy == "low":
+            return "Preliminary"
+    return "Preliminary"
+
+
+def coerce_evidence_type(value: object) -> str:
+    """Coerce an evidence type value to a valid label."""
     if isinstance(value, str):
         normalized = value.strip().lower()
-        if normalized in {"high", "medium", "low"}:
+        if normalized in VALID_EVIDENCE_TYPE:
             return normalized
-    return "low"
+    return "assumption"
 
 
 def normalize_proposal_list(value: object, limit: int = 8) -> list[dict[str, object]]:
@@ -500,6 +771,8 @@ def normalize_proposal_list(value: object, limit: int = 8) -> list[dict[str, obj
                 "action": action or "defer",
                 "reason": reason,
                 "confidence": coerce_confidence(item.get("confidence")),
+                "evidence_type": coerce_evidence_type(item.get("evidence_type")),
+                "grounding_quote": item.get("grounding_quote", "").strip() if isinstance(item.get("grounding_quote"), str) else "",
                 "evidence": evidence,
             }
         )
@@ -585,7 +858,9 @@ def normalize_claim_inventory(value: object, limit: int = 10) -> list[dict[str, 
             {
                 "claim": claim,
                 "claim_type": claim_type,
+                "evidence_type": coerce_evidence_type(item.get("evidence_type")),
                 "confidence": coerce_confidence(item.get("confidence")),
+                "grounding_quote": item.get("grounding_quote", "").strip() if isinstance(item.get("grounding_quote"), str) else "",
                 "evidence": normalize_string_list(item.get("evidence"), limit=4),
                 "suggested_destination": normalize_string_list(item.get("suggested_destination"), limit=4),
                 "verification_needed": bool(item.get("verification_needed", False)),
@@ -636,38 +911,20 @@ def normalize_review_hints(value: object) -> dict[str, object]:
     }
 
 
-def normalize_result(data: dict[str, object]) -> dict[str, object]:
-    brief = data.get("brief") if isinstance(data.get("brief"), dict) else {}
-    source = data.get("source") if isinstance(data.get("source"), dict) else {}
-    result = {
-        "brief": {
-            "one_sentence": brief.get("one_sentence", "").strip() if isinstance(brief.get("one_sentence"), str) else "",
-            "key_points": normalize_string_list(brief.get("key_points"), limit=7),
-            "who_should_read": normalize_string_list(brief.get("who_should_read"), limit=4),
-            "why_revisit": normalize_string_list(brief.get("why_revisit"), limit=4),
-        },
-        "source": {
-            "core_summary": normalize_string_list(source.get("core_summary"), limit=8),
-            "candidate_concepts": normalize_string_list(source.get("candidate_concepts"), limit=10),
-            "candidate_entities": normalize_string_list(source.get("candidate_entities"), limit=10),
-            "domains": normalize_string_list(source.get("domains"), limit=3),
-            "knowledge_base_relation": normalize_string_list(source.get("knowledge_base_relation"), limit=6),
-            "contradictions": normalize_string_list(source.get("contradictions"), limit=4),
-            "reinforcements": normalize_string_list(source.get("reinforcements"), limit=4),
-        },
-    }
-    if not result["brief"]["one_sentence"]:
-        raise RuntimeError("LLM compile result missing brief.one_sentence")
-    if not result["brief"]["key_points"]:
-        raise RuntimeError("LLM compile result missing brief.key_points")
-    if not result["source"]["core_summary"]:
-        raise RuntimeError("LLM compile result missing source.core_summary")
-    return result
-
-
 def normalize_result_v2(data: dict[str, object]) -> dict[str, object]:
     if str(data.get("version", "")).strip() != "2.0":
-        raise RuntimeError("LLM compile result missing version 2.0")
+        # Friendly hint if LLM used schema_version instead of version
+        if "schema_version" in data:
+            raise RuntimeError(
+                f"LLM output uses 'schema_version' instead of 'version'. "
+                f"Expected: {{\"version\": \"2.0\", \"document_outputs\": {{...}}}}. "
+                f"Got keys: {list(data.keys())[:10]}"
+            )
+        raise RuntimeError(
+            f"LLM compile result missing 'version: \"2.0\"'. "
+            f"Expected: {{\"version\": \"2.0\", \"document_outputs\": {{...}}}}. "
+            f"Got keys: {list(data.keys())[:10]}"
+        )
     compile_target = data.get("compile_target") if isinstance(data.get("compile_target"), dict) else {}
     document_outputs = data.get("document_outputs") if isinstance(data.get("document_outputs"), dict) else {}
     brief = document_outputs.get("brief") if isinstance(document_outputs.get("brief"), dict) else {}
@@ -718,50 +975,6 @@ def normalize_result_v2(data: dict[str, object]) -> dict[str, object]:
     return result
 
 
-def compile_article(
-    *,
-    vault: Path,
-    raw_path: Path,
-    title: str,
-    author: str,
-    date: str,
-    source_url: str,
-    slug: str,
-    model_override: str | None = None,
-) -> dict[str, object]:
-    prepare_compile_payload(
-        vault=vault,
-        raw_path=raw_path,
-        title=title,
-        author=author,
-        date=date,
-        source_url=source_url,
-        slug=slug,
-    )
-    config = env_config(model_override=model_override)
-    if config is None:
-        raise RuntimeError("LLM compile is not configured. Set WECHAT_WIKI_API_KEY and WECHAT_WIKI_COMPILE_MODEL.")
-    if "mock_file" in config:
-        mock_path = Path(str(config["mock_file"])).expanduser().resolve()
-        if not mock_path.exists():
-            raise RuntimeError(f"Mock compile file not found: {mock_path}")
-        return normalize_result(json.loads(mock_path.read_text(encoding="utf-8")))
-    payload = prepare_compile_payload(
-        vault=vault,
-        raw_path=raw_path,
-        title=title,
-        author=author,
-        date=date,
-        source_url=source_url,
-        slug=slug,
-    )
-    system_prompt = str(payload["system_prompt"])
-    user_prompt = str(payload["user_prompt"])
-    content = call_openai_compatible(system_prompt, user_prompt, config)
-    data = extract_json(content)
-    return normalize_result(data)
-
-
 def compile_article_v2(
     *,
     vault: Path,
@@ -806,20 +1019,7 @@ def compile_article_auto(
     model_override: str | None = None,
     schema_version: str = "2.0",
 ) -> dict[str, object]:
-    if schema_version == "1.0":
-        return {
-            "schema_version": "1.0",
-            "result": compile_article(
-                vault=vault,
-                raw_path=raw_path,
-                title=title,
-                author=author,
-                date=date,
-                source_url=source_url,
-                slug=slug,
-                model_override=model_override,
-            ),
-        }
+    # V1.0 compile removed — always use v2
     return compile_article_v2(
         vault=vault,
         raw_path=raw_path,
@@ -832,37 +1032,338 @@ def compile_article_auto(
     )
 
 
+# ---------------------------------------------------------------------------
+# Two-step CoT Ingest: Step 1 — fact extraction
+# ---------------------------------------------------------------------------
+
+def build_fact_extraction_user_prompt(
+    title: str,
+    author: str,
+    date: str,
+    source_url: str,
+    raw_body: str,
+    context: dict[str, object],
+) -> str:
+    parts = [
+        "请从以下文章中提取结构化事实清单。",
+        "",
+        "## 来源元数据",
+        f"- 标题：{title}",
+        f"- 作者：{author or '未知'}",
+        f"- 日期：{date or '未知'}",
+        f"- 链接：{source_url or '未知'}",
+    ]
+    purpose_text = context.get("purpose", "") if isinstance(context, dict) else ""
+    if purpose_text:
+        parts.extend([
+            "",
+            "## 研究方向（purpose.md）",
+            "提取事实时，优先关注与以下领域相关的内容。",
+            purpose_text,
+        ])
+    parts.extend([
+        "",
+        "## 原文正文",
+        raw_body,
+    ])
+    return "\n".join(parts)
+
+
+def normalize_fact_inventory(data: dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a fact_inventory from LLM output."""
+    inventory = data.get("fact_inventory") if isinstance(data.get("fact_inventory"), dict) else data
+    if not isinstance(inventory, dict):
+        raise RuntimeError("fact_inventory is not a dict")
+
+    # Normalize atomic_facts
+    raw_facts = inventory.get("atomic_facts", [])
+    if not isinstance(raw_facts, list):
+        raw_facts = []
+    atomic_facts: list[dict[str, object]] = []
+    for i, item in enumerate(raw_facts):
+        if not isinstance(item, dict):
+            continue
+        fact_text = item.get("fact", "").strip() if isinstance(item.get("fact"), str) else ""
+        if not fact_text:
+            continue
+        atomic_facts.append({
+            "id": item.get("id", f"f{i+1}").strip() if isinstance(item.get("id"), str) else f"f{i+1}",
+            "fact": fact_text,
+            "evidence_type": coerce_evidence_type(item.get("evidence_type")),
+            "confidence": coerce_confidence(item.get("confidence")),
+            "grounding_quote": item.get("grounding_quote", "").strip() if isinstance(item.get("grounding_quote"), str) else "",
+            "paragraph_ref": item.get("paragraph_ref", "").strip() if isinstance(item.get("paragraph_ref"), str) else "",
+        })
+
+    # Normalize argument_structure
+    arg_struct = inventory.get("argument_structure") if isinstance(inventory.get("argument_structure"), dict) else {}
+    generators: list[dict[str, str]] = []
+    for g in arg_struct.get("generators", []):
+        if not isinstance(g, dict):
+            continue
+        name = g.get("name", "").strip() if isinstance(g.get("name"), str) else ""
+        narrative = g.get("narrative", "").strip() if isinstance(g.get("narrative"), str) else ""
+        if name and narrative:
+            generators.append({
+                "name": name,
+                "narrative": narrative,
+                "counterfactual": g.get("counterfactual", "").strip() if isinstance(g.get("counterfactual"), str) else "",
+            })
+
+    logic_chain: list[dict[str, object]] = []
+    for step in arg_struct.get("logic_chain", []):
+        if not isinstance(step, dict):
+            continue
+        step_text = step.get("step", "").strip() if isinstance(step.get("step"), str) else ""
+        if not step_text:
+            continue
+        step_type = step.get("type", "intermediate") if isinstance(step.get("type"), str) else "intermediate"
+        if step_type not in {"premise", "intermediate", "conclusion"}:
+            step_type = "intermediate"
+        depends_on = step.get("depends_on", []) if isinstance(step.get("depends_on"), list) else []
+        logic_chain.append({
+            "step": step_text,
+            "type": step_type,
+            "depends_on": [d for d in depends_on if isinstance(d, str)],
+        })
+
+    assumptions = normalize_string_list(arg_struct.get("assumptions"), limit=8)
+
+    # Normalize key_entities
+    raw_entities = inventory.get("key_entities", [])
+    if not isinstance(raw_entities, list):
+        raw_entities = []
+    valid_entity_types = {"person", "org", "product", "theory", "method", "concept", "other"}
+    key_entities: list[dict[str, str]] = []
+    for e in raw_entities:
+        if not isinstance(e, dict):
+            continue
+        name = e.get("name", "").strip() if isinstance(e.get("name"), str) else ""
+        if not name:
+            continue
+        etype = e.get("type", "other") if isinstance(e.get("type"), str) else "other"
+        if etype not in valid_entity_types:
+            etype = "other"
+        key_entities.append({
+            "name": name,
+            "type": etype,
+            "definition": e.get("definition", "").strip() if isinstance(e.get("definition"), str) else "",
+            "grounding_quote": e.get("grounding_quote", "").strip() if isinstance(e.get("grounding_quote"), str) else "",
+        })
+
+    # Normalize cross_domain_hooks
+    raw_hooks = inventory.get("cross_domain_hooks", [])
+    if not isinstance(raw_hooks, list):
+        raw_hooks = []
+    cross_domain_hooks: list[dict[str, object]] = []
+    for h in raw_hooks:
+        if not isinstance(h, dict):
+            continue
+        pattern = h.get("pattern", "").strip() if isinstance(h.get("pattern"), str) else ""
+        bridge_logic = h.get("bridge_logic", "").strip() if isinstance(h.get("bridge_logic"), str) else ""
+        if not pattern or not bridge_logic:
+            continue
+        potential_domains = [d for d in (h.get("potential_domains") or []) if isinstance(d, str)]
+        cross_domain_hooks.append({
+            "pattern": pattern,
+            "potential_domains": potential_domains,
+            "bridge_logic": bridge_logic,
+            "confidence": coerce_confidence(h.get("confidence")),
+        })
+
+    # Normalize quantitative_markers
+    raw_markers = inventory.get("quantitative_markers", [])
+    if not isinstance(raw_markers, list):
+        raw_markers = []
+    quantitative_markers: list[dict[str, str]] = []
+    for m in raw_markers:
+        if not isinstance(m, dict):
+            continue
+        marker = m.get("marker", "").strip() if isinstance(m.get("marker"), str) else ""
+        value = m.get("value", "").strip() if isinstance(m.get("value"), str) else ""
+        if not marker:
+            continue
+        quantitative_markers.append({
+            "marker": marker,
+            "value": value,
+            "context": m.get("context", "").strip() if isinstance(m.get("context"), str) else "",
+        })
+
+    open_questions = normalize_string_list(inventory.get("open_questions"), limit=8)
+
+    return {
+        "atomic_facts": atomic_facts,
+        "argument_structure": {
+            "generators": generators,
+            "logic_chain": logic_chain,
+            "assumptions": assumptions,
+        },
+        "key_entities": key_entities,
+        "cross_domain_hooks": cross_domain_hooks,
+        "open_questions": open_questions,
+        "quantitative_markers": quantitative_markers,
+    }
+
+
+def extract_facts(
+    *,
+    vault: Path,
+    raw_path: Path,
+    title: str,
+    author: str,
+    date: str,
+    source_url: str,
+    model_override: str | None = None,
+) -> dict[str, object]:
+    """Step 1 of two-step CoT: extract fact_inventory from the source article."""
+    config = env_config(model_override=model_override)
+    if config is None:
+        raise RuntimeError("LLM compile is not configured. Set WECHAT_WIKI_API_KEY and WECHAT_WIKI_COMPILE_MODEL.")
+
+    raw_text = raw_path.read_text(encoding="utf-8")
+    _, raw_body = parse_frontmatter(raw_text)
+    context = collect_context(vault, Path(raw_path).stem, title, raw_body)
+
+    system_prompt = load_fact_extraction_prompt()
+    user_prompt = build_fact_extraction_user_prompt(title, author, date, source_url, raw_body, context)
+
+    content = call_openai_compatible(system_prompt, user_prompt, config)
+    data = extract_json(content)
+    return normalize_fact_inventory(data)
+
+
+def compile_article_two_step(
+    *,
+    vault: Path,
+    raw_path: Path,
+    title: str,
+    author: str,
+    date: str,
+    source_url: str,
+    slug: str,
+    model_override: str | None = None,
+) -> dict[str, object]:
+    """Two-step CoT ingest: Step 1 extracts facts, Step 2 compiles wiki structure constrained by facts.
+
+    Returns:
+        {
+            "schema_version": "2.0",
+            "fact_inventory": { ... },
+            "result": { ... }  # the v2 compile output
+        }
+    """
+    # Step 1: Extract facts
+    fact_inventory = extract_facts(
+        vault=vault,
+        raw_path=raw_path,
+        title=title,
+        author=author,
+        date=date,
+        source_url=source_url,
+        model_override=model_override,
+    )
+
+    # Step 2: Compile wiki structure constrained by fact_inventory
+    config = env_config(model_override=model_override)
+    if config is None:
+        raise RuntimeError("LLM compile is not configured.")
+
+    if "mock_file" in config:
+        mock_path = Path(str(config["mock_file"])).expanduser().resolve()
+        if not mock_path.exists():
+            raise RuntimeError(f"Mock compile file not found: {mock_path}")
+        result = normalize_result_v2(json.loads(mock_path.read_text(encoding="utf-8")))
+        return {"schema_version": "2.0", "fact_inventory": fact_inventory, "result": result}
+
+    raw_text = raw_path.read_text(encoding="utf-8")
+    _, raw_body = parse_frontmatter(raw_text)
+    context = collect_context(vault, slug, title, raw_body)
+    context.update(collect_related_pages(vault, title=title, raw_body=raw_body, slug=slug))
+
+    system_prompt = load_prompt_v2()
+    user_prompt = build_user_prompt_v2(
+        title, author, date, source_url, raw_body, context,
+        fact_inventory=fact_inventory,
+    )
+
+    content = call_openai_compatible(system_prompt, user_prompt, config)
+    result = normalize_result_v2(extract_json(content))
+
+    return {
+        "schema_version": "2.0",
+        "fact_inventory": fact_inventory,
+        "result": result,
+    }
+
+
 def main() -> int:
+    fix_windows_encoding()
     args = parse_args()
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
     slug = args.slug or args.raw.stem
-    if args.prepare_only:
-        lean = args.lean
-        if args.schema_version == "1.0":
-            result = prepare_compile_payload(
-                vault=args.vault.resolve(),
-                raw_path=args.raw.resolve(),
-                title=args.title,
-                author=args.author,
-                date=args.date,
-                source_url=args.source_url,
-                slug=slug,
-            )
-            if lean:
-                result.pop("system_prompt", None)
-                result.pop("user_prompt", None)
+    if args.extract_facts_only:
+        result = extract_facts(
+            vault=args.vault.resolve(),
+            raw_path=args.raw.resolve(),
+            title=args.title,
+            author=args.author,
+            date=args.date,
+            source_url=args.source_url,
+            model_override=args.model,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.chunked:
+        payload = prepare_chunked_payloads(
+            vault=args.vault.resolve(),
+            raw_path=args.raw.resolve(),
+            title=args.title,
+            author=args.author,
+            date=args.date,
+            source_url=args.source_url,
+            slug=slug,
+            chunk_size=args.chunk_size,
+        )
+        # Write to file (chunked payloads are too large for stdout)
+        if args.chunk_output:
+            out_path = args.chunk_output
         else:
-            result = prepare_compile_payload_v2(
-                vault=args.vault.resolve(),
-                raw_path=args.raw.resolve(),
-                title=args.title,
-                author=args.author,
-                date=args.date,
-                source_url=args.source_url,
-                slug=slug,
-                lean=lean,
-            )
+            out_path = default_runtime_dir() / "compile-payloads" / f"{slug}_chunks.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        summary = {
+            "mode": "chunked-compile",
+            "total_chunks": payload["metadata"]["total_chunks"],
+            "total_lines": payload["metadata"]["total_lines"],
+            "output_file": str(out_path),
+            "chunks": [
+                {"chunk_id": c["chunk_id"], "chunk_title": c["chunk_title"], "line_count": c["line_count"]}
+                for c in payload["chunks"]
+            ],
+        }
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    elif args.two_step:
+        result = compile_article_two_step(
+            vault=args.vault.resolve(),
+            raw_path=args.raw.resolve(),
+            title=args.title,
+            author=args.author,
+            date=args.date,
+            source_url=args.source_url,
+            slug=slug,
+            model_override=args.model,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.prepare_only:
+        result = prepare_compile_payload_v2(
+            vault=args.vault.resolve(),
+            raw_path=args.raw.resolve(),
+            title=args.title,
+            author=args.author,
+            date=args.date,
+            source_url=args.source_url,
+            slug=slug,
+            lean=args.lean,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         result = compile_article_auto(
             vault=args.vault.resolve(),
@@ -873,9 +1374,8 @@ def main() -> int:
             source_url=args.source_url,
             slug=slug,
             model_override=args.model,
-            schema_version=args.schema_version,
         )
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 

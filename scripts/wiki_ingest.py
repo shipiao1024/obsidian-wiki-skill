@@ -17,11 +17,28 @@ from pathlib import Path
 import pipeline.fetch as _fetch
 import pipeline.ingest as _ingest
 import pipeline.apply as _apply
-from pipeline.shared import slugify_article, resolve_vault, detect_domains
+from pipeline.shared import slugify_article, resolve_vault
+from pipeline.encoding_fix import fix_windows_encoding
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 _DEFAULT_TOOL_DIR = SKILL_DIR / ".tools" / "wechat-article-for-ai"
 _DEFAULT_DEPS_DIR = SKILL_DIR / ".python-packages"
+
+
+def _default_runtime_root() -> Path:
+    configured = os.environ.get("KWIKI_RUNTIME_DIR")
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.append(Path.cwd() / ".runtime-fetch")
+    candidates.append(SKILL_DIR / ".runtime-fetch")
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+    raise SystemExit("No writable runtime directory available. Set KWIKI_RUNTIME_DIR to a writable path.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,11 +108,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-headless", action="store_true", help="Show browser for CAPTCHA handling.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose upstream logging.")
     parser.add_argument("--no-llm-compile", action="store_true", help="Disable LLM-based brief/source compilation and always use heuristic fallback.")
+    parser.add_argument("--api-compile", action="store_true", help="Call OpenAI-compatible API directly for unattended batch compile. Requires WECHAT_WIKI_API_KEY. Default is prepare-only (agent interactive).")
+    parser.add_argument("--chunked", action="store_true", help="For large documents: split into chunks and generate per-chunk compile payloads. LLM processes each chunk then synthesizes.")
+    parser.add_argument("--chunk-size", type=int, default=500, help="Max lines per chunk when no chapter headings found (default: 500).")
     return parser.parse_args()
 
 
 
 def main() -> int:
+    fix_windows_encoding()
     args = parse_args()
     vault = resolve_vault(args.vault).resolve()
     vault.mkdir(parents=True, exist_ok=True)
@@ -111,7 +132,7 @@ def main() -> int:
             input_dir = args.work_dir.resolve()
             input_dir.mkdir(parents=True, exist_ok=True)
         else:
-            runtime_root = Path.cwd() / ".runtime-fetch"
+            runtime_root = _default_runtime_root()
             input_dir, cleanup = _fetch.create_runtime_input_dir(runtime_root)
         articles = _fetch.load_articles_from_inputs(args, input_dir, vault=vault, collection_contexts=collection_contexts)
 
@@ -125,21 +146,30 @@ def main() -> int:
             return 0
         raise SystemExit(f"No article markdown found in {input_dir}")
 
-    # Re-resolve vault using domain detection from the first article
+    # Re-resolve vault (domain-based routing removed — LLM handles domain detection)
     if not args.vault and articles:
-        article_domains = detect_domains(articles[0])
-        domain_vault = resolve_vault(article_domains=article_domains)
-        if domain_vault != vault:
-            vault = domain_vault
+        resolved_vault = resolve_vault()
+        if resolved_vault != vault:
+            vault = resolved_vault
             vault.mkdir(parents=True, exist_ok=True)
             _ingest.ensure_bootstrap(vault)
-            print(f"Auto-routed to vault: {vault} (matched domains: {', '.join(article_domains)})", file=sys.stderr)
+            print(f"Auto-routed to vault: {vault}", file=sys.stderr)
+
+    # Determine compile mode (mutually exclusive)
+    if args.no_llm_compile:
+        compile_mode = "heuristic"
+    elif args.api_compile:
+        compile_mode = "api-compile"
+    elif args.chunked:
+        compile_mode = "chunked-prepare"
+    else:
+        compile_mode = "prepare-only"
 
     manifest = []
     log_entries: list[tuple[str, str, str]] = []
     collection_results: dict[tuple[str, str], list[dict[str, str]]] = {}
     for article in articles:
-        result = _apply.ingest_article(vault, article, args.force, args.no_llm_compile)
+        result = _apply.ingest_article(vault, article, args.force, args.no_llm_compile, compile_mode=compile_mode, chunk_size=args.chunk_size)
         manifest.append(
             {
                 "title": result["title"],

@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from pipeline.encoding_fix import fix_windows_encoding
 from pipeline.shared import resolve_vault
 
 
@@ -30,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-linked-sources", type=int, default=2, help="Minimum linked sources before a page is considered mature enough to require cleanup.")
     parser.add_argument("--stale-hours", type=int, default=1, help="Flag page if linked source is newer than page by this many hours.")
     parser.add_argument("--blind-spots", action="store_true", help="Also generate wiki/blind-spots.md report.")
+    parser.add_argument("--auto-suggest", action="store_true", help="Output structured maintenance suggestions JSON.")
     return parser.parse_args()
 
 
@@ -96,7 +98,148 @@ def repeated_outputs(vault: Path) -> dict[str, list[str]]:
     return {title: sorted(paths) for title, paths in outputs.items() if len(paths) > 1}
 
 
+def _compute_health_score(report: dict[str, object]) -> int:
+    """Compute health score from report data. Starts at 100, deducts for issues."""
+    score = 100
+    score -= len(report.get("stale_taxonomy_pages", [])) * 3
+    score -= len(report.get("placeholder_pages_with_multiple_sources", [])) * 2
+    score -= len(report.get("duplicate_outputs", {})) * 1
+    return max(0, min(100, score))
+
+
+def _count_pending_outputs(vault: Path) -> int:
+    """Count outputs with lifecycle temporary or review-needed."""
+    count = 0
+    outputs_dir = vault / "wiki" / "outputs"
+    if not outputs_dir.exists():
+        return 0
+    for path in outputs_dir.glob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        meta, _ = parse_frontmatter(text)
+        lifecycle = meta.get("lifecycle", "")
+        if lifecycle in {"temporary", "review-needed"}:
+            count += 1
+    return count
+
+
+def _last_maintenance_date(vault: Path) -> str | None:
+    """Read last maintenance date from log.md."""
+    log_path = vault / "wiki" / "log.md"
+    if not log_path.exists():
+        return None
+    log_text = log_path.read_text(encoding="utf-8")
+    # Look for maintenance/lint entries
+    maint_pattern = re.compile(r"^## \[(\d{4}-\d{2}-\d{2})\].*(?:lint|maintenance|维护)", re.M)
+    matches = maint_pattern.findall(log_text)
+    return max(matches) if matches else None
+
+
+def _count_ingest_records(vault: Path) -> int:
+    """Count ingest records in log.md."""
+    log_path = vault / "wiki" / "log.md"
+    if not log_path.exists():
+        return 0
+    log_text = log_path.read_text(encoding="utf-8")
+    return len(INGEST_LOG_PATTERN.findall(log_text))
+
+
+def build_auto_suggestions(vault: Path, report: dict[str, object]) -> dict[str, object]:
+    """Build structured maintenance suggestions from report data."""
+    suggestions: list[dict[str, str]] = []
+
+    # Low health score
+    health_score = _compute_health_score(report)
+    if health_score < 80:
+        suggestions.append({
+            "type": "low_health_score",
+            "score": str(health_score),
+            "severity": "high",
+            "reason": f"健康评分 {health_score}/100，低于 80 分阈值",
+            "suggested_action": "健康检查",
+            "suggested_command": "wiki_lint.py --collect-only",
+        })
+
+    # Stale pages
+    stale_count = len(report.get("stale_taxonomy_pages", []))
+    if stale_count >= 3:
+        suggestions.append({
+            "type": "stale_pages",
+            "count": str(stale_count),
+            "severity": "medium",
+            "reason": f"{stale_count} 个页面时间戳早于引用来源，可能需要重新综合",
+            "suggested_action": "主张分析",
+            "suggested_command": "claim_evolution.py --collect-only",
+        })
+
+    # Pending outputs
+    pending_count = _count_pending_outputs(vault)
+    if pending_count >= 10:
+        severity = "high" if pending_count >= 20 else "medium"
+        suggestions.append({
+            "type": "pending_outputs",
+            "count": str(pending_count),
+            "severity": severity,
+            "reason": f"outputs/ 中有 {pending_count} 个待处理项目",
+            "suggested_action": "审核队列",
+            "suggested_command": "review_queue.py --collect-only",
+        })
+
+    # Duplicate outputs
+    dup_count = len(report.get("duplicate_outputs", {}))
+    if dup_count >= 2:
+        suggestions.append({
+            "type": "duplicate_outputs",
+            "count": str(dup_count),
+            "severity": "low",
+            "reason": f"{dup_count} 组重复 output",
+            "suggested_action": "审核队列",
+            "suggested_command": "review_queue.py --sweep",
+        })
+
+    # Ingest count milestone (every 10)
+    ingest_count = _count_ingest_records(vault)
+    if ingest_count > 0 and ingest_count % 10 == 0:
+        suggestions.append({
+            "type": "ingest_milestone",
+            "count": str(ingest_count),
+            "severity": "low",
+            "reason": f"已有 {ingest_count} 篇素材入库，建议定期检查",
+            "suggested_action": "健康检查",
+            "suggested_command": "wiki_lint.py --collect-only",
+        })
+
+    # Last maintenance date
+    last_maint = _last_maintenance_date(vault)
+    days_since = None
+    if last_maint:
+        from datetime import datetime
+        try:
+            last_date = datetime.strptime(last_maint, "%Y-%m-%d")
+            days_since = (datetime.now() - last_date).days
+            if days_since >= 14:
+                suggestions.append({
+                    "type": "maintenance_overdue",
+                    "days": str(days_since),
+                    "severity": "medium",
+                    "reason": f"距上次维护已 {days_since} 天",
+                    "suggested_action": "日常维护",
+                    "suggested_command": "wiki_lint.py --collect-only",
+                })
+        except ValueError:
+            pass
+
+    return {
+        "suggestions": suggestions,
+        "last_maintenance": last_maint,
+        "days_since_maintenance": days_since,
+        "health_score": health_score,
+        "pending_outputs": pending_count,
+        "ingest_count": ingest_count,
+    }
+
+
 def main() -> int:
+    fix_windows_encoding()
     args = parse_args()
     vault = resolve_vault(args.vault).resolve()
     source_pages = collect_source_pages(vault)
@@ -147,7 +290,11 @@ def main() -> int:
         blind_spots_path = write_blind_spots_page(vault)
         report["blind_spots_page"] = str(blind_spots_path)
 
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if args.auto_suggest:
+        suggestions = build_auto_suggestions(vault, report)
+        print(json.dumps(suggestions, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
 

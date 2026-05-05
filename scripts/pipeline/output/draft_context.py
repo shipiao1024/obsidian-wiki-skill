@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import _read_page, _page_title
-from pipeline.text_utils import parse_frontmatter, section_excerpt, plain_text
+from pipeline.text_utils import parse_frontmatter, section_excerpt, plain_text, get_one_sentence
 
 
 def build_draft_context_output(
@@ -33,7 +33,7 @@ def build_draft_context_output(
             core = section_excerpt(body, "核心摘要")
             relation = section_excerpt(body, "与现有知识库的关系")
         elif meta.get("type") == "brief":
-            core = section_excerpt(body, "一句话结论")
+            core = get_one_sentence(meta, body)
             relation = ""
         elif meta.get("type") == "synthesis":
             core = section_excerpt(body, "当前结论")

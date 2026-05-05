@@ -4,50 +4,99 @@ Query scripts for the Claude-obsidian-wiki-skill pipeline. Read this file when p
 
 ---
 
+## 设计原则
+
+**Claude Code 是主路由层**，负责理解用户意图并选择 `--mode`。脚本的 `--mode auto` 仅用于 CLI 直调兜底。
+
+```
+用户口语 → Claude Code（意图理解 + mode 选择）→ wiki_query.py（执行）→ 输出
+                ↑ 主路由                              ↑ 执行层
+```
+
+组合需求由 Claude Code 拆成多次调用。脚本不做意图理解。
+
+---
+
 ## wiki_query.py
 
-Query entrypoint:
+### 基本用法
 
 ```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_query.py `
-  "这篇文章如何看待 AIDV 对 EEA 的冲击？"
+# Claude Code 调用（推荐）：由 Claude 选择 mode
+python scripts/wiki_query.py "BEV 感知方案" --mode briefing --vault "D:\Vault"
+
+# CLI 直调：不传 --mode，走 auto 兜底（正则匹配）
+python scripts/wiki_query.py "什么是 BEV 感知" --vault "D:\Vault"
 ```
 
-With output mode:
+### 参数
 
-```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_query.py `
-  "BEV感知方案的对比" --mode briefing
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `question` | 必填 | 自然语言问题（positional） |
+| `--vault` | 自动发现 | Obsidian vault 路径 |
+| `--mode` | `auto` | 输出模式。Claude Code 应显式传入，CLI 直调可省略走 auto |
+| `--digest-type` | `deep` | digest 子类型：`deep` / `compare` / `timeline` |
+| `--top` | `5` | 候选页面数量 |
+| `--no-writeback` | false | 不写入 wiki/outputs/ |
 
-python Claude-obsidian-wiki-skill\scripts\wiki_query.py `
-  "Transformer在自动驾驶中的应用" --mode draft-context
+### 10 种输出模式
 
-python Claude-obsidian-wiki-skill\scripts\wiki_query.py `
-  "反驳纯视觉方案足够安全的观点" --mode contradict
+| mode | 用途 | 典型触发 |
+|------|------|---------|
+| `brief` | 快速了解 | "是什么"、"定义"、"概述" |
+| `briefing` | 会议准备 | "准备开会"、"汇报"、"简报" |
+| `contradict` | 反驳质疑 | "反驳"、"反方"、"质疑" |
+| `digest` | 深度综合 | "深入分析"（配合 --digest-type） |
+| `essay` | 写文章 | "写文章"、"帮我写" |
+| `reading-list` | 学习路径 | "学习路径"、"系统学习" |
+| `talk-track` | 会议讨论 | "讨论材料"、"开会" |
+| `draft-context` | 整理素材 | "素材"、"喂给 LLM" |
+| `deep-research` | 深度研究初始材料 | "深入研究"（后续走推理驱动 8 阶段协议） |
+| `auto` | 自动路由（兜底） | 不传 --mode 时的默认行为 |
+
+### auto 模式（兜底）
+
+当 Claude Code 未传 `--mode` 时，脚本通过 `intent_router.py` 的正则匹配自动选择模式。优先级：
+
+1. context（素材/上下文/喂给）
+2. deep-research（深入研究/系统分析）
+3. digest --compare（对比/比较/vs）
+4. digest --timeline（时间线/演变）
+5. essay（写文章/帮我写）
+6. reading-list（学习路径/系统学习）
+7. contradict（反驳/反方/质疑）
+8. briefing（准备会议/汇报/简报）
+9. brief（是什么/定义/概述）
+10. brief（默认）
+
+**auto 模式的局限**：无法处理组合需求、模糊意图、非关键词表达。这些情况应由 Claude Code 在上层处理。
+
+### 输出
+
+脚本返回 JSON：
+
+```json
+{
+  "question": "准备开会讨论端到端自动驾驶",
+  "mode": "briefing",
+  "auto_routed": "false",
+  "entry_layer": "ask",
+  "answer": "## 相关来源\n...",
+  "used_pages": ["briefs/xxx", "sources/yyy"],
+  "output": "wiki/outputs/2026-05-02--143000--准备开会讨论端到端.md"
+}
 ```
 
-What the query script does:
+- `mode`：实际使用的模式
+- `auto_routed`：`"true"` 表示由 auto 模式自动选择，`"false"` 表示由调用方显式指定
+- `entry_layer`：`"ask"` / `"digest"` / `"context"`，用于日志和分析
 
-- Reads `wiki/hot.md` first for recent context, then `wiki/index.md` and ranks candidate pages from it.
-- Prefers `wiki/sources/` and `wiki/briefs/`, with `wiki/syntheses/` and `wiki/comparisons/` as supporting context.
-- Gives ranking boost to `mature`/`evergreen` pages (score +2/+1) over `seed`/`developing` pages.
-- When the question contains precision signals such as numbers, dates, quotes, definitions, or author stance, it also reads linked `raw/articles/`.
-- Supports eight output modes via `--mode`:
-  - `brief` (default) — top excerpts from candidate pages.
-  - `briefing` — structured briefing with sources, claims, controversies, open questions, and stances.
-  - `draft-context` — copy-paste-ready material pack with citations for LLM context.
-  - `contradict` — strongest rebuttal from stance pages, source contradictions, and negation-pattern matches.
-  - `digest` — multi-source aggregation. Sub-types via `--digest-type`:
-    - `deep` (default): background + core views + cross-perspective comparison + unresolved questions
-    - `compare`: core views, applicable scenarios, strengths, weaknesses in markdown table
-    - `timeline`: Mermaid gantt chart + chronological event list
-  - `essay` — draft essay from stances + syntheses + sources.
-  - `reading-list` — recommended reading path sorted by dependency.
-  - `talk-track` — meeting material pack with stance arguments, rebuttals, and open questions.
-- Writes the answer into `wiki/outputs/` by default.
-- Updates `wiki/hot.md` with recent query context.
-- Appends the query event (with mode) to `wiki/log.md`.
-- Rebuilds `wiki/index.md` so the new output is discoverable.
-- Marks `wiki/outputs/` pages as graph-hidden working artifacts, not primary knowledge nodes.
+### 行为细节
 
-Full mode descriptions and usage examples: `references/output-modes.md`.
+- 读 `wiki/hot.md` 获取近期上下文
+- 读 `wiki/index.md` 按词频 + folder 权重 + 页面状态打分，取 top N
+- 优先读 `sources/` 和 `briefs/`，`syntheses/` 和 `comparisons/` 作补充
+- `mature`/`evergreen` 页面获得打分加权（+2/+1）
+- 问题含数字/日期/引用等高精度信号时，自动关联 `raw/articles/` 原文
+- 结果写入 `wiki/outputs/`，更新 `wiki/hot.md` 和 `wiki/log.md`，重建 `wiki/index.md`

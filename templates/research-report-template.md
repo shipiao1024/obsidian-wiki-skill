@@ -32,7 +32,7 @@ working_hypothesis_count: "0"
 
 ### 工作假说
 
-[40-70% 置信度，有部分证据的假说，每条带 Hypothesis X% 标签]
+[40-70% 置信度，有部分证据的假说，每条带 Hypothesis 标签]
 
 ### 关键边界
 

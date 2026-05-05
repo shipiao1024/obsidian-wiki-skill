@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pipeline.encoding_fix import fix_windows_encoding
 from pipeline.stance import (
     write_stance_page,
     apply_stance_impact,
@@ -17,6 +18,7 @@ from pipeline.stance import (
 
 
 def main() -> int:
+    fix_windows_encoding()
     parser = argparse.ArgumentParser(description="Manage Stance Pages")
     sub = parser.add_subparsers(dest="command")
 

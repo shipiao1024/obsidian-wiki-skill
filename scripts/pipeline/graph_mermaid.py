@@ -13,9 +13,9 @@ import re
 from datetime import date
 from pathlib import Path
 
-from .shared import parse_frontmatter, section_excerpt
+from .shared import get_one_sentence, parse_frontmatter, section_excerpt
 from .typed_edges import collect_typed_edges
-from .graph_analysis import scan_pages, louvain_communities, detect_insights
+from .graph_analysis import scan_pages, louvain_communities
 
 LINK_PATTERN = re.compile(r"\[\[([^|\]]+)")
 
@@ -56,7 +56,7 @@ def _read_page_excerpt(vault: Path, ref: str) -> str:
     if page_type == "source":
         excerpt = section_excerpt(body, "核心摘要")
     elif page_type == "brief":
-        excerpt = section_excerpt(body, "一句话结论")
+        excerpt = get_one_sentence(meta, body)
     elif page_type == "stance":
         excerpt = section_excerpt(body, "核心判断")
     elif page_type == "question":

@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .types import Article
+from .types import Article, DEFAULT_DOMAINS
 from .text_utils import parse_frontmatter, sanitize_filename
 
 CONF_DIR = Path.home() / ".claude" / "obsidian-wiki"
@@ -239,3 +239,29 @@ def _discover_obsidian_vault() -> Path:
         return existing_all[0]
 
     raise SystemExit("Could not determine a single Obsidian vault automatically.")
+
+
+def load_domain_keywords(vault: Path | None = None) -> dict[str, list[str]]:
+    """Load domain keywords, preferring vault-specific purpose.md over global defaults.
+
+    Reads focus_domains from purpose.md and maps them to keyword lists.
+    Falls back to DEFAULT_DOMAINS (from types.py) if no vault or no purpose.md.
+    Future: purpose.md could include per-domain keyword overrides.
+    """
+    if vault is None:
+        return dict(DEFAULT_DOMAINS)
+
+    purpose = parse_purpose_md(vault)
+    focus = purpose.get("focus", [])
+    if not focus:
+        return dict(DEFAULT_DOMAINS)
+
+    # For now, use focus domains as domain names with DEFAULT_DOMAINS keywords where available.
+    # Domains not in DEFAULT_DOMAINS get the domain name itself as the only keyword.
+    result: dict[str, list[str]] = {}
+    for domain in focus:
+        if domain in DEFAULT_DOMAINS:
+            result[domain] = DEFAULT_DOMAINS[domain]
+        else:
+            result[domain] = [domain]
+    return result if result else dict(DEFAULT_DOMAINS)

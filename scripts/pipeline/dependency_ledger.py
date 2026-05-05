@@ -5,7 +5,7 @@ Node types: F (Fact), I (Inference), A (Assumption), H (Hypothesis),
 C (Conclusion), G (Gap), D (Disputed).
 
 Each node carries: ID, Type, Claim, Source, Depends_on, Required_by,
-Confidence, Status.
+Confidence (ordinal), Status.
 """
 
 from __future__ import annotations
@@ -29,20 +29,42 @@ NODE_TYPE_LABELS = {
     "D": "争议",
 }
 
-CONFIDENCE_LABELS = {
-    (0, 20): "Preliminary",
-    (20, 40): "Developing",
-    (40, 60): "Working",
-    (60, 80): "Supported",
-    (80, 100): "Stable",
-}
+# Ordinal confidence model (replaces percentage-based labels)
+ORDINAL_LEVELS = ("Seeded", "Preliminary", "Working", "Supported", "Stable")
+_ORDINAL_RANK = {name: i for i, name in enumerate(ORDINAL_LEVELS)}
 
 
-def confidence_label(value: int) -> str:
-    for lo, hi in CONFIDENCE_LABELS:
-        if lo <= value < hi:
-            return CONFIDENCE_LABELS[(lo, hi)]
-    return "Stable" if value >= 100 else "Preliminary"
+def confidence_label(value: str | int) -> str:
+    """Return the ordinal confidence label.
+
+    Accepts either an ordinal string or a legacy percentage (int).
+    For percentage input, maps to ordinal: 0-19=Seeded, 20-39=Preliminary,
+    40-59=Working, 60-79=Supported, 80+=Stable.
+    """
+    if isinstance(value, str):
+        if value in _ORDINAL_RANK:
+            return value
+        # Try parsing as int
+        try:
+            value = int(value)
+        except (ValueError, TypeError):
+            return "Preliminary"
+    if isinstance(value, int):
+        if value < 20:
+            return "Seeded"
+        if value < 40:
+            return "Preliminary"
+        if value < 60:
+            return "Working"
+        if value < 80:
+            return "Supported"
+        return "Stable"
+    return "Preliminary"
+
+
+def ordinal_min(a: str, b: str) -> str:
+    """Return the lower of two ordinal confidence levels."""
+    return a if _ORDINAL_RANK.get(a, 0) <= _ORDINAL_RANK.get(b, 0) else b
 
 
 def research_slug(topic: str) -> str:
@@ -95,11 +117,14 @@ def init_ledger_page(vault: Path, topic: str, hypotheses: list[dict]) -> Path:
     for i, h in enumerate(hypotheses, 1):
         claim = h.get("claim", "")
         h_type = h.get("type", "causal")
-        conf = h.get("confidence", 25)
-        conf_label = confidence_label(conf)
+        conf = h.get("confidence", "Preliminary")
+        if isinstance(conf, int):
+            conf_label = confidence_label(conf)
+        else:
+            conf_label = confidence_label(str(conf))
         confirm_queries = h.get("confirm_queries", [])
         contradict_queries = h.get("contradict_queries", [])
-        h_lines.append(f"- H-{i:02d}: {claim} | 类型: {h_type} | 置信度: {conf}% ({conf_label})")
+        h_lines.append(f"- H-{i:02d}: {claim} | 类型: {h_type} | 置信度: {conf_label}")
         if confirm_queries:
             h_lines.append(f"  确认查询: {', '.join(confirm_queries)}")
         if contradict_queries:
@@ -178,9 +203,15 @@ def read_ledger(vault: Path, topic: str) -> dict:
                 elif part.startswith("被依赖:"):
                     node_info["required_by"] = part[len("被依赖:"):].strip()
                 elif part.startswith("置信度:"):
-                    conf_str = re.search(r"(\d+)", part)
-                    if conf_str:
-                        node_info["confidence"] = conf_str.group(1)
+                    # Try ordinal label first, then percentage
+                    conf_str = part[len("置信度:"):].strip()
+                    ordinal_match = re.search(r"(Seeded|Preliminary|Working|Supported|Stable)", conf_str)
+                    if ordinal_match:
+                        node_info["confidence"] = ordinal_match.group(1)
+                    else:
+                        pct_match = re.search(r"(\d+)", conf_str)
+                        if pct_match:
+                            node_info["confidence"] = confidence_label(int(pct_match.group(1)))
                 elif part.startswith("类型:"):
                     node_info["hypothesis_type"] = part[len("类型:"):].strip()
                 elif part.startswith("边界:"):
@@ -242,28 +273,37 @@ def update_hypothesis_confidence(
     vault: Path,
     topic: str,
     hypothesis_id: str,
-    new_confidence: int,
+    new_confidence: str,
     reason: str = "",
 ) -> None:
-    """Update an H node's confidence in the ledger."""
+    """Update an H node's confidence in the ledger.
+
+    new_confidence should be an ordinal label: Seeded/Preliminary/Working/Supported/Stable.
+    Legacy int values are accepted and converted via confidence_label().
+    """
     slug = research_slug(topic)
     path = _ledger_path(vault, slug)
     text = path.read_text(encoding="utf-8")
     today = date.today().isoformat()
 
-    conf_label = confidence_label(new_confidence)
+    if isinstance(new_confidence, int):
+        conf_label = confidence_label(new_confidence)
+    else:
+        conf_label = confidence_label(str(new_confidence))
+
     # Find and replace the confidence field for the specific H node
+    # Matches both old format (% (Label)) and new format (Label)
     pattern = re.compile(
-        rf"(- {re.escape(hypothesis_id)}: .*?)\| 置信度: \d+% \(\w+\)"
+        rf"(- {re.escape(hypothesis_id)}: .*?)\| 置信度: (?:\d+% \(\w+\)|\w+)"
     )
     match = pattern.search(text)
     if match:
         old_part = match.group(1)
-        new_part = f"{old_part}| 置信度: {new_confidence}% ({conf_label})"
+        new_part = f"{old_part}| 置信度: {conf_label}"
         text = text.replace(match.group(0), new_part)
 
     text = re.sub(r'last_updated: "\d{4}-\d{2}-\d{2}"', f'last_updated: "{today}"', text)
-    text += f"- {today}: {hypothesis_id} 置信度 → {new_confidence}% ({conf_label})"
+    text += f"- {today}: {hypothesis_id} 置信度 → {conf_label}"
     if reason:
         text += f" — {reason[:80]}"
     text += "\n"
@@ -271,12 +311,12 @@ def update_hypothesis_confidence(
     path.write_text(text, encoding="utf-8")
 
 
-def propagate_confidence(vault: Path, topic: str) -> dict[str, int]:
+def propagate_confidence(vault: Path, topic: str) -> dict[str, str]:
     """Propagate confidence through the dependency graph.
 
     Rule: a Conclusion node's confidence <= min confidence of its dependency chain.
 
-    Returns a dict of {node_id: propagated_confidence} for nodes that changed.
+    Returns a dict of {node_id: propagated_ordinal} for nodes that changed.
     """
     ledger = read_ledger(vault, topic)
     nodes = ledger["nodes"]
@@ -288,7 +328,7 @@ def propagate_confidence(vault: Path, topic: str) -> dict[str, int]:
         if dep_str:
             deps[nid] = [d.strip() for d in dep_str.split(",") if d.strip()]
 
-    changed: dict[str, int] = {}
+    changed: dict[str, str] = {}
     # Propagate for C (Conclusion) and I (Inference) nodes
     for nid, node in nodes.items():
         if node.get("type") not in ("C", "I"):
@@ -296,18 +336,20 @@ def propagate_confidence(vault: Path, topic: str) -> dict[str, int]:
         dep_ids = deps.get(nid, [])
         if not dep_ids:
             continue
-        dep_confidences = []
+        dep_ordinals = []
         for dep_id in dep_ids:
             if dep_id in nodes:
-                conf_str = nodes[dep_id].get("confidence", "50")
-                dep_confidences.append(int(conf_str))
-        if dep_confidences:
-            propagated = min(dep_confidences)
-            current_conf = int(node.get("confidence", "50"))
-            if propagated < current_conf:
+                conf_str = nodes[dep_id].get("confidence", "Preliminary")
+                dep_ordinals.append(conf_str)
+        if dep_ordinals:
+            propagated = dep_ordinals[0]
+            for d in dep_ordinals[1:]:
+                propagated = ordinal_min(propagated, d)
+            current_conf = node.get("confidence", "Preliminary")
+            if _ORDINAL_RANK.get(propagated, 0) < _ORDINAL_RANK.get(current_conf, 0):
                 changed[nid] = propagated
                 update_hypothesis_confidence(vault, topic, nid, propagated,
-                                             reason=f"依赖链传播（min={propagated}%)")
+                                             reason=f"依赖链传播（min={propagated}）")
 
     return changed
 
@@ -333,11 +375,11 @@ def check_evidence_sufficiency(vault: Path, topic: str) -> dict:
     a_nodes = {nid: n for nid, n in nodes.items() if n.get("type") == "A"}
     d_nodes = {nid: n for nid, n in nodes.items() if n.get("type") == "D"}
 
-    # Check 1: No H node still at Preliminary (< 20%)
+    # Check 1: No H node still at Seeded (no evidence backing)
     for nid, node in h_nodes.items():
-        conf = int(node.get("confidence", "0"))
-        if conf < 20:
-            violations.append(f"{nid} 置信度仍为 Preliminary ({conf}%)")
+        conf = node.get("confidence", "Seeded")
+        if conf == "Seeded":
+            violations.append(f"{nid} 置信度仍为 Seeded（无证据支撑）")
 
     # Check 2: Every H node has at least one F node in its dependency
     for nid, node in h_nodes.items():
@@ -410,8 +452,8 @@ def surgical_rollback(vault: Path, topic: str, node_id: str, reason: str = "") -
         if dep_str and node_id in [d.strip() for d in dep_str.split(",")]:
             affected.append(nid)
 
-    # Roll back: set confidence to 0 for the root node
-    update_hypothesis_confidence(vault, topic, node_id, 0,
+    # Roll back: set confidence to Seeded for the root node
+    update_hypothesis_confidence(vault, topic, node_id, "Seeded",
                                  reason=f"手术式回滚: {reason[:60]}")
 
     # Propagate impact

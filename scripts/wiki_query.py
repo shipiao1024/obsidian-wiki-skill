@@ -13,8 +13,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from pipeline.encoding_fix import fix_windows_encoding
 from pipeline.output import VALID_MODES, build_mode_output
 from pipeline.shared import resolve_vault
+from pipeline.text_utils import get_one_sentence
 
 
 FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.S)
@@ -81,8 +83,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vault", type=Path, help="Obsidian vault root.")
     parser.add_argument("--top", type=int, default=5, help="Number of candidate pages to read.")
     parser.add_argument("--no-writeback", action="store_true", help="Do not write a result page to wiki/outputs.")
-    parser.add_argument("--mode", default="brief", choices=VALID_MODES, help="Output mode (default: brief).")
-    parser.add_argument("--digest-type", default="deep", choices=("deep", "compare", "timeline"), help="Digest sub-type when mode=digest.")
+    parser.add_argument("--mode", default="auto", choices=VALID_MODES, help="Output mode (default: auto — auto-detected from question).")
+    parser.add_argument("--digest-type", default="deep", choices=("deep", "compare", "timeline"), help="Digest sub-type override (default: deep).")
     return parser.parse_args()
 
 
@@ -197,8 +199,8 @@ def prioritized_text(path: Path) -> str:
     elif page_type == "brief":
         prioritized.extend(
             [
-                section_excerpt(body, "一句话结论"),
-                section_excerpt(body, "核心要点"),
+                get_one_sentence(meta, body),
+                section_excerpt(body, "骨架") or section_excerpt(body, "数据") or section_excerpt(body, "核心要点"),
                 section_excerpt(body, "值得回看"),
             ]
         )
@@ -373,7 +375,7 @@ def rebuild_index(vault: Path) -> None:
             if page_type == "source":
                 summary = section_excerpt(body, "核心摘要")
             elif page_type == "brief":
-                summary = section_excerpt(body, "一句话结论")
+                summary = get_one_sentence(meta, body)
             elif page_type == "output":
                 summary = section_excerpt(body, "回答")
             else:
@@ -424,6 +426,7 @@ def update_hot_cache_query(vault: Path, question: str, mode: str) -> None:
 
 
 def main() -> int:
+    fix_windows_encoding()
     args = parse_args()
     vault = resolve_vault(args.vault).resolve()
     question = args.question.strip()
@@ -447,7 +450,7 @@ def main() -> int:
                 seen.add(raw_path)
                 raw_paths.append(raw_path)
 
-    answer = build_mode_output(
+    answer, routing_info = build_mode_output(
         mode=mode,
         vault=vault,
         question=question,
@@ -458,22 +461,26 @@ def main() -> int:
     )
     if hot_context:
         answer = f"## 近期知识库动态\n\n{hot_context}\n\n---\n\n{answer}"
+
+    resolved_mode = routing_info.get("resolved_mode", mode)
     output_path: Path | None = None
     output_slug: str | None = None
     if not args.no_writeback:
         output_slug = slugify_query(question)
         output_path = vault / "wiki" / "outputs" / f"{output_slug}.md"
-        output_page = build_output_page(question, answer, candidates, raw_paths, output_slug, mode=mode)
+        output_page = build_output_page(question, answer, candidates, raw_paths, output_slug, mode=resolved_mode)
         output_path.write_text(output_page, encoding="utf-8")
         rebuild_index(vault)
-    append_query_log(vault, question, output_slug, mode=mode)
-    update_hot_cache_query(vault, question, mode)
+    append_query_log(vault, question, output_slug, mode=resolved_mode)
+    update_hot_cache_query(vault, question, resolved_mode)
 
     print(
         json.dumps(
             {
                 "question": question,
-                "mode": mode,
+                "mode": resolved_mode,
+                "auto_routed": routing_info.get("auto_routed", "false"),
+                "entry_layer": routing_info.get("entry_layer", "ask"),
                 "answer": answer,
                 "used_pages": [candidate.ref for candidate in candidates],
                 "used_raw_pages": [str(path) for path in raw_paths],

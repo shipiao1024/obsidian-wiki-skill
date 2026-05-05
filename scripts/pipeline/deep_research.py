@@ -1,7 +1,7 @@
 """Deep research orchestration: init, collect vault evidence, record artifacts, finalize.
 
-Coordinates the 9-phase research protocol via host-agent-first pattern:
-scripts prepare context and persist artifacts, the host agent (LLM) does the reasoning.
+Coordinates the 8-phase reasoning-driven research protocol:
+LLM reasons first, web research extends, vault supplements.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from .shared import parse_frontmatter, section_excerpt, sanitize_filename
+from .shared import get_one_sentence, parse_frontmatter, section_excerpt, sanitize_filename
 from .dependency_ledger import (
     research_slug,
     init_ledger_page,
@@ -31,6 +31,7 @@ def init_research_project(
     vault: Path,
     topic: str,
     hypotheses: list[dict],
+    object_type: str = "",
 ) -> dict:
     """Initialize a deep-research project.
 
@@ -40,7 +41,7 @@ def init_research_project(
     slug = research_slug(topic)
     ledger_path = init_ledger_page(vault, topic, hypotheses)
 
-    # Create context page with hypothesis cards and initial vault briefing
+    # Create context page with hypothesis cards
     today = date.today().isoformat()
     h_cards: list[str] = []
     for i, h in enumerate(hypotheses, 1):
@@ -61,6 +62,8 @@ def init_research_project(
             f"- 反驳查询: {', '.join(contradict)}\n\n"
         )
 
+    object_type_line = f"研究对象类型: {object_type}" if object_type else "研究对象类型: （待确认）"
+
     context_content = (
         f"---\n"
         f'title: "{topic} 研究上下文"\n'
@@ -69,17 +72,22 @@ def init_research_project(
         f'graph_include: "false"\n'
         f'lifecycle: "working"\n'
         f'research_topic: "{topic}"\n'
+        f'object_type: "{object_type}"\n'
         f'status: "active"\n'
         f'created: "{today}"\n'
         f'---\n\n'
         f"# {topic} 研究上下文\n\n"
         f"> 创建日期：{today}\n\n"
+        f"## 基本信息\n\n"
+        f"- {object_type_line}\n\n"
         f"## 假说卡片\n\n"
         + "\n".join(h_cards) +
-        f"\n## 需求审计\n\n"
-        f"（宿主 Agent 填写：表面需求 / 操作需求 / 本质需求）\n\n"
-        f"## Vault Briefing\n\n"
-        f"（宿主 Agent 填写：vault 已有知识概要）\n\n"
+        f"\n## 联网研究发现\n\n"
+        f"### 纵向线（时间轴）\n\n（Phase 3 填充）\n\n"
+        f"### 横向线（竞争对比）\n\n（Phase 3 填充）\n\n"
+        f"### 补充线\n\n（Phase 3 填充）\n\n"
+        f"## Vault 交叉验证\n\n"
+        f"（Phase 7 填充：联网发现与 vault 已有知识的交叉验证）\n\n"
         f"## 校准块\n\n"
         f"### 共识\n\n（待填充）\n\n"
         f"### 边界\n\n（待填充）\n\n"
@@ -147,7 +155,7 @@ def collect_vault_evidence(vault: Path, topic: str, hypothesis_claims: list[str]
                     "title": title,
                     "type": meta.get("type", folder_name),
                     "score": score,
-                    "excerpt": (section_excerpt(body, "核心摘要") or section_excerpt(body, "当前结论") or section_excerpt(body, "一句话结论") or body[:300])[:200],
+                    "excerpt": (section_excerpt(body, "核心摘要") or section_excerpt(body, "当前结论") or get_one_sentence(meta, body) or body[:300])[:200],
                 }
 
                 if is_contradicting:
@@ -171,14 +179,18 @@ def record_scenarios(
     topic: str,
     scenarios: list[dict],
 ) -> Path:
-    """Record scenario stress test table as a vault page."""
+    """Record three-scenario projection as a vault page.
+
+    Supports both old format (base_case/stress_a/stress_b/compound) and
+    new format (most_likely/most_dangerous/most_optimistic).
+    """
     slug = research_slug(topic)
     path = _scenarios_path(vault, slug)
     today = date.today().isoformat()
 
     lines: list[str] = [
         f"---",
-        f'title: "{topic} 情景压力测试"',
+        f'title: "{topic} 三剧本推演"',
         f'type: "research-scenarios"',
         f'graph_role: "research"',
         f'graph_include: "false"',
@@ -187,37 +199,79 @@ def record_scenarios(
         f'created: "{today}"',
         f'---',
         f"",
-        f"# {topic} 情景压力测试",
+        f"# {topic} 三剧本推演",
         f"",
         f"> 生成日期：{today}",
         f"",
     ]
 
-    # Table format
-    lines.append("| 结论 | 基准情景 | 压力 A | 压力 B | 复合 | 边界条件 |")
-    lines.append("|---|---|---|---|---|---|")
+    # Detect format: new three-scenario or legacy table
+    is_new_format = isinstance(scenarios, dict) or (
+        isinstance(scenarios, list) and scenarios and "most_likely" in scenarios[0]
+    )
 
-    for s in scenarios:
-        conclusion = s.get("conclusion", "")
-        base = s.get("base_case", "-")
-        stress_a = s.get("stress_a", "-")
-        stress_b = s.get("stress_b", "-")
-        compound = s.get("compound", "-")
-        boundary = s.get("boundary_condition", "-")
-        lines.append(f"| {conclusion} | {base} | {stress_a} | {stress_b} | {compound} | {boundary} |")
+    if is_new_format:
+        # New format: dict with most_likely / most_dangerous / most_optimistic
+        data = scenarios if isinstance(scenarios, dict) else scenarios[0]
 
-    lines.append("")
-    lines.append("## 情景详述")
-    lines.append("")
-    for s in scenarios:
-        lines.append(f"### {s.get('conclusion', '')}")
-        for key in ("base_case", "stress_a", "stress_b", "compound"):
-            val = s.get(key, "")
-            if val and val != "-":
-                lines.append(f"- **{key}**: {val}")
-        if s.get("boundary_condition"):
-            lines.append(f"- **边界条件**: {s['boundary_condition']}")
+        for label, key in [("最可能剧本", "most_likely"), ("最危险剧本", "most_dangerous"), ("最乐观剧本", "most_optimistic")]:
+            scenario = data.get(key, {})
+            if not isinstance(scenario, dict):
+                continue
+            lines.append(f"## {label}")
+            lines.append("")
+            if scenario.get("description"):
+                lines.append(scenario["description"])
+                lines.append("")
+            for field, field_label in [
+                ("timeframe", "时间框架"), ("key_assumptions", "关键假设"),
+                ("trigger_conditions", "触发条件"), ("failure_mechanism", "失败机制"),
+                ("required_conditions", "所需条件"), ("controllable_factors", "可控因素"),
+                ("uncontrollable_factors", "不可控因素"),
+                ("quantitative_projection", "量化推演"), ("mitigation", "应对措施"),
+            ]:
+                val = scenario.get(field)
+                if not val:
+                    continue
+                if isinstance(val, list):
+                    lines.append(f"**{field_label}**：" + "、".join(str(v) for v in val))
+                else:
+                    lines.append(f"**{field_label}**：{val}")
+            lines.append("")
+
+        # Boundary conditions
+        boundary = data.get("boundary_conditions", [])
+        if boundary:
+            lines.append("## 边界条件")
+            lines.append("")
+            for cond in boundary:
+                lines.append(f"- {cond}")
+            lines.append("")
+
+    else:
+        # Legacy format: list of {conclusion, base_case, stress_a, stress_b, compound, boundary_condition}
+        lines.append("| 结论 | 基准情景 | 压力 A | 压力 B | 复合 | 边界条件 |")
+        lines.append("|---|---|---|---|---|---|")
+        for s in scenarios:
+            conclusion = s.get("conclusion", "")
+            base = s.get("base_case", "-")
+            stress_a = s.get("stress_a", "-")
+            stress_b = s.get("stress_b", "-")
+            compound = s.get("compound", "-")
+            boundary = s.get("boundary_condition", "-")
+            lines.append(f"| {conclusion} | {base} | {stress_a} | {stress_b} | {compound} | {boundary} |")
         lines.append("")
+        lines.append("## 情景详述")
+        lines.append("")
+        for s in scenarios:
+            lines.append(f"### {s.get('conclusion', '')}")
+            for key in ("base_case", "stress_a", "stress_b", "compound"):
+                val = s.get(key, "")
+                if val and val != "-":
+                    lines.append(f"- **{key}**: {val}")
+            if s.get("boundary_condition"):
+                lines.append(f"- **边界条件**: {s['boundary_condition']}")
+            lines.append("")
 
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
@@ -273,8 +327,15 @@ def finalize_report(
     vault: Path,
     topic: str,
     report_markdown: str,
-) -> Path:
-    """Write the final deep research report page."""
+) -> dict:
+    """Write the final deep research report page with validation and PDF.
+
+    Phase 9.5: Auto-validates with 7 red-line tests, appends results as
+    appendix, then generates PDF.
+
+    Returns:
+        {"report_path": str, "pdf_path": str, "validation": ValidationResult}
+    """
     slug = research_slug(topic)
     path = _report_path(vault, slug)
     today = date.today().isoformat()
@@ -307,15 +368,40 @@ def finalize_report(
         f'---\n\n'
     )
 
-    path.write_text(frontmatter + report_markdown + "\n", encoding="utf-8")
-    return path
+    # --- Phase 9.5: Quality gate ---
+    validation = None
+    try:
+        from .validation_protocol import validate_report, format_validation_report
+        validation = validate_report(report_markdown, ledger_nodes=ledger.get("nodes", {}))
+        appendix = format_validation_report(validation)
+        report_markdown = report_markdown.rstrip() + "\n\n" + appendix + "\n"
+    except Exception:
+        pass  # Validation is non-critical
+
+    path.write_text(frontmatter + report_markdown, encoding="utf-8")
+
+    # --- Generate PDF ---
+    pdf_path_str = ""
+    try:
+        from .pdf_utils import report_to_pdf
+        pdf_result = report_to_pdf(path, title=f"{topic} 深度研究报告")
+        if pdf_result:
+            pdf_path_str = str(pdf_result)
+    except Exception:
+        pass  # PDF generation is non-critical
+
+    return {
+        "report_path": str(path),
+        "pdf_path": pdf_path_str,
+        "validation": validation,
+    }
 
 
 def resume_research_project(vault: Path, topic: str) -> dict:
     """Resume an existing deep-research project by reading its ledger and context.
 
     Returns: dict with completed phases, hypothesis confidences,
-             pending phases, and context summary for the host agent.
+             pending phases, and context summary for the LLM.
     """
     slug = research_slug(topic)
 
@@ -332,18 +418,20 @@ def resume_research_project(vault: Path, topic: str) -> dict:
         completed_phases.append("init")
     if context_path.exists():
         completed_phases.append("intent-expansion")
-    # Check for vault evidence (Phase 3)
+    # Check for web research findings in context (Phase 3)
+    if context_path.exists():
+        ctx_text_check = context_path.read_text(encoding="utf-8")
+        if "纵向线（时间轴）" in ctx_text_check and "（Phase 3 填充）" not in ctx_text_check:
+            completed_phases.append("web-research")
+    # Check for vault evidence (Phase 7)
     nodes = ledger.get("nodes", {})
     f_nodes = [n for n in nodes.values() if n.get("type") == "F"]
     if f_nodes:
-        completed_phases.append("vault-evidence-collection")
-    # Check scenarios (Phase 7)
+        completed_phases.append("vault-supplement")
+    # Check scenarios (Phase 6)
     if _scenarios_path(vault, slug).exists():
-        completed_phases.append("scenario-stress-test")
-    # Check premortem (Phase 8)
-    if _premortem_path(vault, slug).exists():
-        completed_phases.append("premortem")
-    # Check report (Phase 9)
+        completed_phases.append("scenarios")
+    # Check report (Phase 8)
     if _report_path(vault, slug).exists():
         completed_phases.append("finalize-report")
 
@@ -358,11 +446,11 @@ def resume_research_project(vault: Path, topic: str) -> dict:
                 "status": "stable" if int(node.get("confidence", "0")) >= 70 else "working",
             })
 
-    # Determine pending phases
+    # Determine pending phases (new 8-phase flow)
     all_phases = [
         "init", "intent-expansion", "hypothesis-formation",
-        "vault-evidence-collection", "web-research", "calibration",
-        "root-questions", "scenario-stress-test", "premortem", "finalize-report",
+        "web-research", "longitudinal-analysis", "cross-sectional-analysis",
+        "insight-scenarios", "vault-supplement", "finalize-report",
     ]
     pending_phases = [p for p in all_phases if p not in completed_phases]
 
@@ -400,8 +488,9 @@ def update_closure(vault: Path, topic: str) -> dict:
     resolved_questions: list[str] = []
     for nid, node in ledger["nodes"].items():
         if node.get("type") == "H":
-            conf = int(node.get("confidence", "0"))
-            if conf >= 70:
+            conf = node.get("confidence", "Seeded")
+            _RESOLVED_ORDINALS = {"Supported", "Stable"}
+            if conf in _RESOLVED_ORDINALS:
                 resolved_questions.append(node.get("claim", ""))
 
     # Collect stance impacts from F nodes

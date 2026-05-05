@@ -1,33 +1,41 @@
 #!/usr/bin/env python
-"""Basic health checks for the Obsidian LLM wiki."""
+"""Basic health checks for the Obsidian LLM wiki.
+
+Two modes:
+  --collect-only  : Collect data → JSON for LLM analysis (Phase 1)
+  --apply         : Execute LLM decisions from JSON (Phase 3)
+  (default)       : Legacy mode — mechanical checks only, no semantic judgment
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
+import sys
 from pathlib import Path
 
+from pipeline.encoding_fix import fix_windows_encoding
+
+from pipeline.text_utils import (
+    FRONTMATTER,
+    SECTION_PATTERN,
+    CLAIM_PATTERN,
+    parse_frontmatter,
+    section_body,
+)
 
 WIKI_FOLDERS = ["sources", "briefs", "concepts", "entities", "domains", "syntheses", "comparisons", "questions", "stances", "outputs"]
 LINK_PATTERN = re.compile(r"\[\[([^|\]]+)")
-FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.S)
-SECTION_PATTERN = re.compile(r"##\s+(.+?)\s*\n(.*?)(?=\n##\s+|\Z)", re.S)
-CLAIM_PATTERN = re.compile(r"^- \[([^\]|]+)\|([^\]]+)\]\s+(.+)$", re.M)
-CLAIM_NORMALIZE = re.compile(r"[，。；、\s]+")
-CJK_CHUNK = re.compile(r"[\u4e00-\u9fff]{2,}")
-CONFLICT_PAIRS = [
-    ("会", "不会"),
-    ("支持", "反对"),
-    ("增强", "削弱"),
-    ("加强", "削弱"),
-    ("增加", "减少"),
-]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run health checks against the Obsidian LLM wiki.")
     parser.add_argument("--vault", type=Path, required=True, help="Obsidian vault root.")
+    parser.add_argument("--collect-only", action="store_true", help="Collect data as JSON for LLM analysis (Phase 1).")
+    parser.add_argument("--apply", type=Path, dest="apply_json", help="Execute LLM decisions from result JSON (Phase 3).")
+    parser.add_argument("--output", type=Path, help="Output path for --collect-only JSON (default: stdout).")
     return parser.parse_args()
 
 
@@ -39,26 +47,6 @@ def collect_pages(vault: Path) -> dict[str, Path]:
     for path in (vault / "raw" / "articles").glob("*.md"):
         pages[f"raw/articles/{path.stem}"] = path
     return pages
-
-
-def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    match = FRONTMATTER.match(text)
-    if not match:
-        return {}, text
-    meta: dict[str, str] = {}
-    for line in match.group(1).splitlines():
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        meta[key.strip()] = value.strip().strip('"')
-    return meta, text[match.end():]
-
-
-def section_body(body: str, heading: str) -> str:
-    for match in SECTION_PATTERN.finditer(body):
-        if match.group(1).strip() == heading:
-            return match.group(2).strip()
-    return ""
 
 
 def claim_inventory_issues(vault: Path) -> list[str]:
@@ -108,7 +96,7 @@ def low_quality_sources(vault: Path) -> list[str]:
 
 def collect_claims(vault: Path) -> list[dict[str, str]]:
     claims: list[dict[str, str]] = []
-    folders = [vault / "wiki" / "outputs", vault / "wiki" / "sources", vault / "wiki" / "syntheses"]
+    folders = [vault / "wiki" / "outputs", vault / "wiki" / "sources", vault / "wiki" / "briefs", vault / "wiki" / "syntheses"]
     for folder in folders:
         if not folder.exists():
             continue
@@ -116,7 +104,7 @@ def collect_claims(vault: Path) -> list[dict[str, str]]:
             text = path.read_text(encoding="utf-8")
             meta, body = parse_frontmatter(text)
             page_type = meta.get("type", "")
-            if page_type not in {"delta-compile", "source", "synthesis"}:
+            if page_type not in {"delta-compile", "source", "brief", "synthesis"}:
                 continue
             claims_body = section_body(body, "关键判断")
             for match in CLAIM_PATTERN.finditer(claims_body):
@@ -132,67 +120,10 @@ def collect_claims(vault: Path) -> list[dict[str, str]]:
     return claims
 
 
-def normalized_claim_key(claim: str) -> str:
-    text = claim
-    for left, right in CONFLICT_PAIRS:
-        text = text.replace(left, "")
-        text = text.replace(right, "")
-    text = CLAIM_NORMALIZE.sub("", text)
-    return text[:24]
-
-
-def claim_keywords(claim: str) -> set[str]:
-    text = claim
-    for left, right in CONFLICT_PAIRS:
-        text = text.replace(left, "")
-        text = text.replace(right, "")
-    keywords: set[str] = set()
-    for chunk in CJK_CHUNK.findall(text):
-        if len(chunk) < 2:
-            continue
-        for size in range(2, min(4, len(chunk)) + 1):
-            for start in range(0, len(chunk) - size + 1):
-                keywords.add(chunk[start : start + size])
-    return keywords
-
-
-def claims_conflict(left: str, right: str) -> bool:
-    for positive, negative in CONFLICT_PAIRS:
-        if positive in left and negative in right:
-            return True
-        if negative in left and positive in right:
-            return True
-    return False
-
-
-def claim_conflict_records(vault: Path) -> list[dict[str, str]]:
-    issues: list[dict[str, str]] = []
-    claims = collect_claims(vault)
-    for idx in range(len(claims)):
-        for jdx in range(idx + 1, len(claims)):
-            left = claims[idx]
-            right = claims[jdx]
-            if not claims_conflict(left["claim"], right["claim"]):
-                continue
-            overlap = claim_keywords(left["claim"]) & claim_keywords(right["claim"])
-            if not overlap:
-                continue
-            issues.append(
-                {
-                    "left_path": left["path"],
-                    "right_path": right["path"],
-                    "left_claim": left["claim"],
-                    "right_claim": right["claim"],
-                }
-            )
-    return issues
-
-
-def claim_conflicts(vault: Path) -> list[str]:
-    return [
-        f"{item['left_path']} vs {item['right_path']}: {item['left_claim']} <> {item['right_claim']}"
-        for item in claim_conflict_records(vault)
-    ]
+# NOTE: claim_keywords(), claims_conflict(), claim_conflict_records(), claim_conflicts()
+# were removed in the LLM-first refactoring. Semantic judgment (contradiction detection,
+# claim relationship classification) is now handled by LLM per references/prompts/claim_evolution.md.
+# Use claim_evolution.py --collect-only to gather claims, then let LLM analyze relationships.
 
 
 def outbound_links(path: Path) -> set[str]:
@@ -227,9 +158,167 @@ def orphan_comparisons(vault: Path) -> list[str]:
     return issues
 
 
-def main() -> int:
-    args = parse_args()
-    vault = args.vault.resolve()
+def sample_pages(vault: Path, count: int = 10) -> list[dict[str, str]]:
+    """Random sample of wiki pages for LLM semantic analysis."""
+    all_pages: list[Path] = []
+    for folder in WIKI_FOLDERS:
+        folder_path = vault / "wiki" / folder
+        if folder_path.exists():
+            all_pages.extend(folder_path.glob("*.md"))
+    if not all_pages:
+        return []
+    sampled = random.sample(all_pages, min(count, len(all_pages)))
+    result: list[dict[str, str]] = []
+    for path in sampled:
+        text = path.read_text(encoding="utf-8")
+        meta, body = parse_frontmatter(text)
+        folder = path.parent.name
+        result.append({
+            "path": f"{folder}/{path.stem}",
+            "title": meta.get("title", path.stem).strip('"'),
+            "type": meta.get("type", ""),
+            "lifecycle": meta.get("lifecycle", ""),
+            "frontmatter": {k: v for k, v in meta.items() if k in ("title", "type", "lifecycle", "quality", "domains", "status")},
+            "body_excerpt": body[:500],
+        })
+    return result
+
+
+def collect_lint_data(vault: Path) -> dict:
+    """Phase 1: Collect all data for LLM analysis."""
+    pages = collect_pages(vault)
+
+    # Mechanical checks
+    missing_briefs: list[str] = []
+    missing_sources: list[str] = []
+    raw_articles = sorted((vault / "raw" / "articles").glob("*.md"))
+    for raw in raw_articles:
+        stem = raw.stem
+        if f"briefs/{stem}" not in pages:
+            missing_briefs.append(stem)
+        if f"sources/{stem}" not in pages:
+            missing_sources.append(stem)
+
+    broken_links: list[str] = []
+    inbound_count = {key: 0 for key in pages}
+    for key, path in pages.items():
+        for link in outbound_links(path):
+            if link in inbound_count:
+                inbound_count[link] += 1
+            elif link.startswith("raw/assets/"):
+                continue
+            elif not link.startswith("http"):
+                broken_links.append(f"{key} -> {link}")
+
+    orphan_pages: list[str] = []
+    for key, count in inbound_count.items():
+        if count == 0 and not key.startswith("raw/articles/"):
+            if key not in {"wiki/index", "wiki/log", "wiki/hot"} and key not in {"index", "log", "hot"} and not key.startswith("outputs/"):
+                orphan_pages.append(key)
+
+    empty_folders: list[str] = []
+    for folder in ["concepts", "entities", "domains", "syntheses"]:
+        if not list((vault / "wiki" / folder).glob("*.md")):
+            empty_folders.append(folder)
+
+    # Candidate pages
+    candidate_pages: list[dict[str, str]] = []
+    for folder in ("sources", "briefs", "concepts", "entities"):
+        dir_path = vault / "wiki" / folder
+        if not dir_path.exists():
+            continue
+        for path in dir_path.glob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            meta, _ = parse_frontmatter(text)
+            if meta.get("lifecycle") == "candidate":
+                candidate_pages.append({"folder": folder, "slug": path.stem, "title": meta.get("title", path.stem).strip('"')})
+
+    # Status mismatch (mechanical — reference count based)
+    status_mismatch: list[str] = []
+    VALID_PAGE_STATUS = ("seed", "developing", "mature", "evergreen", "draft")
+    STATUS_UPGRADE_THRESHOLDS = {"seed": 1, "developing": 3, "mature": 6}
+    for folder in ["concepts", "entities", "domains"]:
+        for path in (vault / "wiki" / folder).glob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            meta, _ = parse_frontmatter(text)
+            status = meta.get("status", "seed")
+            if status == "draft":
+                status = "seed"
+            name = meta.get("title", path.stem).strip('"')
+            ref_count = 0
+            for src_path in (vault / "wiki" / "sources").glob("*.md"):
+                src_text = src_path.read_text(encoding="utf-8")
+                if name in src_text:
+                    ref_count += 1
+            ordered = [s for s in VALID_PAGE_STATUS if s != "draft"]
+            expected = "seed"
+            for s, t in sorted(STATUS_UPGRADE_THRESHOLDS.items(), key=lambda x: ordered.index(x[0]) if x[0] in ordered else 0):
+                s_idx = ordered.index(s) if s in ordered else -1
+                if ref_count >= t and s_idx >= 0 and s_idx < len(ordered) - 1:
+                    expected = ordered[s_idx + 1]
+            if status != expected and ref_count > 0:
+                status_mismatch.append(f"{folder}/{path.stem}: status={status}, expected={expected} (refs={ref_count})")
+
+    # Claims for LLM analysis
+    all_claims = collect_claims(vault)
+    low_confidence_claims = [
+        {"path": c["path"], "claim_type": c["claim_type"], "claim": c["claim"], "page_type": c["page_type"]}
+        for c in all_claims if c["confidence"] == "low"
+    ]
+
+    return {
+        "broken_links": broken_links,
+        "orphan_pages": orphan_pages,
+        "missing_briefs": missing_briefs,
+        "missing_sources": missing_sources,
+        "empty_folders": empty_folders,
+        "low_quality_sources": low_quality_sources(vault),
+        "claim_inventory_issues": claim_inventory_issues(vault),
+        "status_mismatch": status_mismatch,
+        "orphan_comparisons": orphan_comparisons(vault),
+        "low_confidence_claims": low_confidence_claims,
+        "candidate_pages": candidate_pages,
+        "all_claims": all_claims,
+        "page_sample": sample_pages(vault),
+    }
+
+
+def apply_lint_result(vault: Path, result_path: Path) -> None:
+    """Phase 3: Execute LLM decisions from lint result JSON."""
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+
+    # Apply repair suggestions
+    repairs = result.get("repair_suggestions", [])
+    for repair in repairs:
+        action = repair.get("action", "")
+        target = repair.get("target", "")
+        if not action or not target:
+            continue
+        print(f"[repair] {target}: {action}")
+
+    # Apply upgrade candidates
+    upgrades = result.get("upgrade_candidates", [])
+    for upgrade in upgrades:
+        path_str = upgrade.get("path", "")
+        new_status = upgrade.get("recommended_status", "")
+        if not path_str or not new_status:
+            continue
+        full_path = vault / "wiki" / f"{path_str}.md"
+        if not full_path.exists():
+            print(f"[skip] {path_str}: file not found")
+            continue
+        text = full_path.read_text(encoding="utf-8")
+        # Update lifecycle from candidate to the recommended level
+        text = text.replace('lifecycle: "candidate"', f'lifecycle: "{new_status}"')
+        full_path.write_text(text, encoding="utf-8")
+        print(f"[upgrade] {path_str} → {new_status}")
+
+    summary = result.get("summary", {})
+    print(f"\nLint applied: {summary.get('critical_issues', 0)} critical, {summary.get('warnings', 0)} warnings, {summary.get('suggestions', 0)} suggestions")
+
+
+def main_legacy(vault: Path) -> int:
+    """Legacy mode: mechanical checks only, no semantic judgment."""
     pages = collect_pages(vault)
     results: dict[str, list[str]] = {
         "missing_briefs": [],
@@ -239,7 +328,6 @@ def main() -> int:
         "broken_wikilinks": [],
         "low_quality_sources": [],
         "claim_inventory_issues": [],
-        "claim_conflicts": [],
         "status_mismatch": [],
         "orphan_comparisons": [],
     }
@@ -247,7 +335,7 @@ def main() -> int:
     raw_articles = sorted((vault / "raw" / "articles").glob("*.md"))
     for raw in raw_articles:
         stem = raw.stem
-        if f"wiki/briefs/{stem}".replace("wiki/", "") not in pages and f"briefs/{stem}" not in pages:
+        if f"briefs/{stem}" not in pages:
             results["missing_briefs"].append(stem)
         if f"sources/{stem}" not in pages:
             results["missing_sources"].append(stem)
@@ -273,10 +361,26 @@ def main() -> int:
 
     results["low_quality_sources"] = low_quality_sources(vault)
     results["claim_inventory_issues"] = claim_inventory_issues(vault)
-    results["claim_conflicts"] = claim_conflicts(vault)
     results["orphan_comparisons"] = orphan_comparisons(vault)
 
-    # --- Status mismatch: check if page status aligns with reference count ---
+    all_claims = collect_claims(vault)
+    results["low_confidence_claims"] = [
+        {"path": c["path"], "claim_type": c["claim_type"], "claim": c["claim"], "page_type": c["page_type"]}
+        for c in all_claims if c["confidence"] == "low"
+    ]
+
+    candidate_pages: list[dict[str, str]] = []
+    for folder in ("sources", "briefs", "concepts", "entities"):
+        dir_path = vault / "wiki" / folder
+        if not dir_path.exists():
+            continue
+        for path in dir_path.glob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            meta, _ = parse_frontmatter(text)
+            if meta.get("lifecycle") == "candidate":
+                candidate_pages.append({"folder": folder, "slug": path.stem, "title": meta.get("title", path.stem).strip('"')})
+    results["candidate_pages"] = candidate_pages
+
     VALID_PAGE_STATUS = ("seed", "developing", "mature", "evergreen", "draft")
     STATUS_UPGRADE_THRESHOLDS = {"seed": 1, "developing": 3, "mature": 6}
     for folder in ["concepts", "entities", "domains"]:
@@ -303,6 +407,28 @@ def main() -> int:
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
+
+
+def main() -> int:
+    fix_windows_encoding()
+    args = parse_args()
+    vault = args.vault.resolve()
+
+    if args.apply_json:
+        apply_lint_result(vault, args.apply_json)
+        return 0
+
+    if args.collect_only:
+        data = collect_lint_data(vault)
+        output = json.dumps(data, ensure_ascii=False, indent=2)
+        if args.output:
+            args.output.write_text(output, encoding="utf-8")
+            print(f"Lint data written to {args.output}")
+        else:
+            print(output)
+        return 0
+
+    return main_legacy(vault)
 
 
 if __name__ == "__main__":

@@ -9,11 +9,8 @@ from .text_utils import parse_frontmatter
 from .extractors import (
     concept_slug,
     comparison_slug,
-    detect_domains,
     domain_slug,
     entity_slug,
-    extract_concepts,
-    extract_entities,
     mature_concepts,
     mature_entities,
     page_mention_count,
@@ -64,10 +61,19 @@ def check_and_upgrade_status(vault: Path, folder: str, name: str, slug_fn) -> No
     text = path.read_text(encoding="utf-8")
     meta, body = parse_frontmatter(text)
     current = meta.get("status", "seed")
+    lifecycle = meta.get("lifecycle", "official")
     if current in ("draft",):
         current = "seed"
     if current not in VALID_PAGE_STATUS or current == "evergreen":
         return
+    # Candidate lifecycle upgrade: 2+ high-confidence source mentions -> official + seed
+    if lifecycle == "candidate" and current == "candidate":
+        ref_count = page_mention_count(vault, "sources", name)
+        if ref_count >= STATUS_UPGRADE_THRESHOLDS.get("candidate", 2):
+            meta["lifecycle"] = "official"
+            meta["status"] = "seed"
+            path.write_text(render_frontmatter(meta) + body, encoding="utf-8")
+            return
     ref_count = page_mention_count(vault, "sources", name)
     ordered = [s for s in VALID_PAGE_STATUS if s != "draft"]
     idx = ordered.index(current) if current in ordered else 0
@@ -86,27 +92,29 @@ def ensure_taxonomy_pages(
     force: bool,
     domains_override: list[str] | None = None,
     compiled_payload: dict[str, object] | None = None,
+    source_lifecycle: str = "official",
 ) -> None:
     from .compile import promoted_taxonomy_names_from_payload
 
-    concept_names = mature_concepts(vault, extract_concepts(article, limit=8))
-    entity_names = mature_entities(vault, extract_entities(article, limit=8))
-    for name in promoted_taxonomy_names_from_payload(compiled_payload, "concepts"):
-        if name not in concept_names:
-            concept_names.append(name)
-    for name in promoted_taxonomy_names_from_payload(compiled_payload, "entities"):
-        if name not in entity_names:
-            entity_names.append(name)
-    domain_names = [name for name in (domains_override or detect_domains(article)) if isinstance(name, str) and name.strip()]
+    # Use LLM-provided taxonomy names only (script-based extraction removed)
+    concept_names = promoted_taxonomy_names_from_payload(compiled_payload, "concepts")
+    entity_names = promoted_taxonomy_names_from_payload(compiled_payload, "entities")
+    domain_names = [name for name in (domains_override or []) if isinstance(name, str) and name.strip()]
     domain_links = [f"[[domains/{domain_slug(name)}]]" for name in domain_names]
 
     for name in concept_names:
         path = vault / "wiki" / "concepts" / f"{concept_slug(name)}.md"
         if not path.exists():
-            path.write_text(build_concept_page(name, source_slug, article), encoding="utf-8")
+            page_text = build_concept_page(name, source_slug, domains=domain_names)
+            if source_lifecycle == "candidate":
+                page_text = page_text.replace('lifecycle: "official"', 'lifecycle: "candidate"').replace('status: "seed"', 'status: "candidate"')
+            path.write_text(page_text, encoding="utf-8")
             continue
         text = path.read_text(encoding="utf-8")
         meta, body = parse_frontmatter(text)
+        if source_lifecycle == "candidate" and meta.get("lifecycle", "official") == "official":
+            meta["lifecycle"] = "candidate"
+            meta["status"] = "candidate"
         updated = merge_links_section(body, "来自来源", [f"[[sources/{source_slug}]]"], "- 待补充。")
         updated = replace_links_section(updated, "相关主题域", domain_links, "- 待补充。")
         path.write_text(render_frontmatter(meta) + updated.strip() + "\n", encoding="utf-8")
@@ -115,10 +123,16 @@ def ensure_taxonomy_pages(
     for name in entity_names:
         path = vault / "wiki" / "entities" / f"{entity_slug(name)}.md"
         if not path.exists():
-            path.write_text(build_entity_page(name, source_slug, article), encoding="utf-8")
+            page_text = build_entity_page(name, source_slug, domains=domain_names)
+            if source_lifecycle == "candidate":
+                page_text = page_text.replace('lifecycle: "official"', 'lifecycle: "candidate"').replace('status: "seed"', 'status: "candidate"')
+            path.write_text(page_text, encoding="utf-8")
             continue
         text = path.read_text(encoding="utf-8")
         meta, body = parse_frontmatter(text)
+        if source_lifecycle == "candidate" and meta.get("lifecycle", "official") == "official":
+            meta["lifecycle"] = "candidate"
+            meta["status"] = "candidate"
         updated = merge_links_section(body, "来自来源", [f"[[sources/{source_slug}]]"], "- 待补充。")
         updated = replace_links_section(updated, "相关主题域", domain_links, "- 待补充。")
         path.write_text(render_frontmatter(meta) + updated.strip() + "\n", encoding="utf-8")
@@ -148,7 +162,7 @@ def ensure_synthesis_pages(
     source_slug: str,
     domains_override: list[str] | None = None,
 ) -> None:
-    domain_names = [name for name in (domains_override or detect_domains(article)) if isinstance(name, str) and name.strip()]
+    domain_names = [name for name in (domains_override or []) if isinstance(name, str) and name.strip()]
     for name in domain_names:
         if name == "待归域":
             continue

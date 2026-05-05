@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -21,8 +21,12 @@ WIKI_DIRS = [
     "wiki/stances",
     "wiki/comparisons",
     "wiki/outputs",
+    "wiki/research",
 ]
 
+# NOTE: These are legacy presets for a specific user vault.
+# New vaults should configure domains via purpose.md focus_domains.
+# See vault_config.load_domain_keywords() for the override path.
 DEFAULT_DOMAINS = {
     "自动驾驶": ["自动驾驶", "智驾", "AIDV", "FSD", "L2", "L3", "EEA", "端到端", "BEV"],
     "AI 工程": ["Claude", "Codex", "LLM", "RAG", "Agent", "模型", "推理", "Transformer"],
@@ -46,8 +50,9 @@ DOMAIN_MIN_SCORE = {
 CONCEPT_PAGE_THRESHOLD = 2
 ENTITY_PAGE_THRESHOLD = 2
 
-VALID_PAGE_STATUS = ("seed", "developing", "mature", "evergreen", "draft")
+VALID_PAGE_STATUS = ("candidate", "seed", "developing", "mature", "evergreen", "draft")
 STATUS_UPGRADE_THRESHOLDS = {
+    "candidate": 2,
     "seed": 1,
     "developing": 3,
     "mature": 6,
@@ -121,3 +126,4 @@ class Article:
     collection_source_url: str = ""
     collection_video_id: str = ""
     confidence: str = ""
+    claim_inventory: list[dict] = field(default_factory=list)

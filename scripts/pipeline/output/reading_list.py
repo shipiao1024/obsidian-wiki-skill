@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from . import _read_page, _page_title
-from pipeline.text_utils import parse_frontmatter, section_excerpt
+from pipeline.text_utils import get_one_sentence, parse_frontmatter, section_excerpt
 
 
 def build_reading_list_seed(
@@ -45,6 +45,7 @@ def build_reading_list_seed(
                 "type": domain,
                 "overlap": overlap,
                 "body": body,
+                "meta": meta,
             })
 
     if not all_pages:
@@ -69,7 +70,7 @@ def build_reading_list_seed(
         elif page_type == "synthesis":
             core = section_excerpt(page.get("body", ""), "当前结论")[:150]
         elif page_type == "brief":
-            core = section_excerpt(page.get("body", ""), "一句话结论")[:150]
+            core = get_one_sentence(page.get("meta", {}), page.get("body", ""))[:150]
         else:
             core = ""
 

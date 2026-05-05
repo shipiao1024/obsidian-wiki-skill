@@ -1,15 +1,21 @@
 #!/usr/bin/env python
-"""Rebuild synthesis pages from linked sources in the local Obsidian LLM wiki."""
+"""Rebuild synthesis pages from linked sources in the local Obsidian LLM wiki.
+
+Three-stage architecture:
+  --collect-only : Collect source data → JSON for LLM synthesis (Phase 1)
+  --apply        : Write synthesis page from LLM result JSON (Phase 3)
+  (default)      : Legacy mode — heuristic synthesis (deprecated for new domains)
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
-from pipeline.shared import resolve_vault
+from pipeline.encoding_fix import fix_windows_encoding
+from pipeline.shared import resolve_vault, validate_apply_json
 
 
 FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.S)
@@ -17,48 +23,17 @@ CODE_BLOCK = re.compile(r"```.*?```", re.S)
 HEADING = re.compile(r"^\s*#+\s*", re.M)
 LINK_PATTERN = re.compile(r"\[\[([^|\]]+)")
 RAW_SOURCE_PATTERN = re.compile(r'raw_source:\s*"\[\[([^\]]+)\]\]"')
-NOISE_PATTERNS = (
-    "系列导读",
-    "上一篇",
-    "开场",
-    "那个工程师写下的一行笔记",
-    "广泛流传的感受",
-    "接下来这个",
-    "下一篇",
-    "待补充",
-    "待后续",
-)
-PREFERRED_PATTERNS = (
-    "根本",
-    "意味着",
-    "核心",
-    "直接",
-    "推动",
-    "区别",
-    "架构",
-    "AIDV",
-    "EEA",
-    "SDV",
-    "端到端",
-    "集中",
-    "分工",
-    "取消分工",
-)
-RAW_SECTION_HEADINGS = (
-    "第一幕：AIDV 和 SDV 的根本区别在哪里",
-    "这个区别在工程上意味着什么",
-    "从 EEA 的视角看：为什么 E2E 逼出了中央计算",
-    "E2E 架构的工程本质",
-    "一个被低估的工程优势：推理延迟",
-)
+CLAIM_PATTERN = re.compile(r"^- \[([^\]|]+)\|([^\]]+)\]\s+(.+)$", re.M)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Refresh synthesis pages from current linked sources.")
     parser.add_argument("--vault", type=Path, help="Obsidian vault root.")
     parser.add_argument("--domain", help="Specific domain name, such as 自动驾驶.")
+    parser.add_argument("--collect-only", action="store_true", help="Collect source data as JSON for LLM synthesis.")
+    parser.add_argument("--apply", type=Path, dest="apply_json", help="Write synthesis page from LLM result JSON.")
+    parser.add_argument("--output", type=Path, help="Output path for --collect-only JSON.")
     return parser.parse_args()
-
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -95,71 +70,6 @@ def section_excerpt(body: str, heading: str) -> str:
     return plain_text(match.group(1)).strip()
 
 
-def split_sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[。！？!?；;])\s*", text)
-    return [part.strip() for part in parts if len(part.strip()) >= 14]
-
-
-def normalize_sentence(sentence: str) -> str:
-    sentence = sentence.replace("\\ \\ ", " ").replace('\\"', '"')
-    sentence = re.sub(r"^[^：]{2,20}：", "", sentence)
-    sentence = re.sub(r"\s+", " ", sentence).strip()
-    sentence = sentence.strip(' -"\'')
-    return sentence
-
-
-def is_noise_sentence(sentence: str) -> bool:
-    if len(sentence) < 18:
-        return True
-    if any(pattern in sentence for pattern in NOISE_PATTERNS):
-        return True
-    if "raw/assets/" in sentence or "相关主题域" in sentence or "来自来源" in sentence:
-        return True
-    return False
-
-
-def score_sentence(sentence: str, terms: list[str]) -> int:
-    score = 0
-    for term in terms:
-        if term and term in sentence:
-            score += 4
-            score += sentence.count(term)
-    for pattern in PREFERRED_PATTERNS:
-        if pattern in sentence:
-            score += 2
-    if "。" in sentence or "；" in sentence:
-        score += 1
-    return score
-
-
-def dedupe_lines(items: list[str], limit: int) -> list[str]:
-    result: list[str] = []
-    for item in items:
-        item = item.strip()
-        if not item or item in result:
-            continue
-        result.append(item)
-        if len(result) >= limit:
-            break
-    return result
-
-
-def select_sentences(sentences: list[str], terms: list[str], limit: int) -> list[str]:
-    cleaned = [normalize_sentence(item) for item in sentences]
-    filtered = [item for item in cleaned if not is_noise_sentence(item)]
-    ranked = sorted(filtered, key=lambda item: score_sentence(item, terms), reverse=True)
-    return dedupe_lines(ranked or cleaned, limit)
-
-
-def compress_lead(sentences: list[str]) -> str:
-    picked = [normalize_sentence(item).rstrip("。") for item in sentences[:2] if item]
-    if not picked:
-        return "待补充。"
-    if len(picked) == 1:
-        return picked[0] + "。"
-    return f"{picked[0]}；{picked[1]}。"
-
-
 def outbound_links(path: Path) -> set[str]:
     text = path.read_text(encoding="utf-8")
     return {match.strip() for match in LINK_PATTERN.findall(text)}
@@ -174,23 +84,23 @@ def linked_raw_path(path: Path, vault: Path) -> Path | None:
     return raw_path if raw_path.exists() else None
 
 
-def raw_section_excerpt(raw_markdown: str, heading: str) -> str:
-    pattern = re.compile(rf"##+\s+{re.escape(heading)}\s*\n(.*?)(?:\n##+\s+|\Z)", re.S)
-    match = pattern.search(raw_markdown)
+def extract_claims_from_source(source_path: Path) -> list[dict[str, str]]:
+    text = source_path.read_text(encoding="utf-8")
+    _, body = parse_frontmatter(text)
+    pattern = re.compile(r"##\s+关键判断\s*\n(.*?)(?:\n##\s+|\Z)", re.S)
+    match = pattern.search(body)
     if not match:
-        return ""
-    return plain_text(match.group(1)).strip()
-
-
-def preferred_raw_sentences(raw_markdown: str) -> list[str]:
-    sentences: list[str] = []
-    for heading in RAW_SECTION_HEADINGS:
-        excerpt = raw_section_excerpt(raw_markdown, heading)
-        if excerpt:
-            sentences.extend(split_sentences(excerpt))
-    if sentences:
-        return sentences
-    return split_sentences(plain_text(raw_markdown))
+        return []
+    claims_body = match.group(1)
+    claims = []
+    for match in CLAIM_PATTERN.finditer(claims_body):
+        claim_text = match.group(3).strip().rstrip("⚠️需验证").strip()
+        claims.append({
+            "claim_type": match.group(1).strip(),
+            "confidence": match.group(2).strip().lower(),
+            "claim": claim_text,
+        })
+    return claims
 
 
 def synthesis_sources(vault: Path, synthesis_path: Path) -> list[Path]:
@@ -198,30 +108,70 @@ def synthesis_sources(vault: Path, synthesis_path: Path) -> list[Path]:
     return [vault / "wiki" / f"{ref}.md" for ref in refs if (vault / "wiki" / f"{ref}.md").exists()]
 
 
-def synthesis_concepts(source_paths: list[Path]) -> list[str]:
-    concepts: list[str] = []
-    for path in source_paths:
-        concepts.extend(link for link in outbound_links(path) if link.startswith("concepts/"))
-    return dedupe_lines(concepts, 8)
-
-
-def build_synthesis_page(vault: Path, synthesis_path: Path) -> str:
-    meta, _ = parse_frontmatter(synthesis_path.read_text(encoding="utf-8"))
+def collect_synthesis_data(vault: Path, synthesis_path: Path) -> dict:
+    """Phase 1: Collect source data for LLM synthesis."""
+    meta, body = parse_frontmatter(synthesis_path.read_text(encoding="utf-8"))
     domain = meta.get("domain") or synthesis_path.stem.replace("--综合分析", "")
     source_paths = synthesis_sources(vault, synthesis_path)
-    terms = re.findall(r"[A-Za-z0-9\-\+]{2,}|[\u4e00-\u9fff]{2,8}", domain)
 
-    evidence: list[str] = []
+    # Existing synthesis content
+    current_conclusion = section_excerpt(body, "当前结论")
+
+    # Collect linked sources
+    linked_sources: list[dict[str, str]] = []
     for source_path in source_paths:
-        source_meta, source_body = parse_frontmatter(source_path.read_text(encoding="utf-8"))
-        evidence.extend(split_sentences(section_excerpt(source_body, "核心摘要")))
-        raw_path = linked_raw_path(source_path, vault)
-        if raw_path:
-            evidence.extend(preferred_raw_sentences(raw_path.read_text(encoding="utf-8")))
+        src_meta, src_body = parse_frontmatter(source_path.read_text(encoding="utf-8"))
+        core_summary = section_excerpt(src_body, "核心摘要")
+        one_sentence = src_meta.get("one_sentence", "").strip('"')
+        key_claims = extract_claims_from_source(source_path)
 
-    selected = select_sentences(evidence, terms, 8)
-    lead = compress_lead(selected)
-    concepts = synthesis_concepts(source_paths)
+        linked_sources.append({
+            "slug": f"sources/{source_path.stem}",
+            "title": src_meta.get("title", source_path.stem).strip('"'),
+            "quality": src_meta.get("quality", "unknown"),
+            "date": src_meta.get("date", ""),
+            "core_summary": core_summary[:500],
+            "one_sentence": one_sentence,
+            "key_claims": [c["claim"] for c in key_claims],
+        })
+
+    return {
+        "synthesis_path": f"syntheses/{synthesis_path.stem}",
+        "domain": domain,
+        "source_count": len(linked_sources),
+        "linked_sources": linked_sources,
+        "existing_synthesis": {
+            "current_conclusion": current_conclusion[:500],
+        },
+    }
+
+
+def apply_synthesis_result(vault: Path, result_path: Path, synthesis_path: Path | None = None) -> None:
+    """Phase 3: Write synthesis page from LLM result."""
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    validate_apply_json(result, ["current_conclusion"], context="refresh_synthesis")
+    today = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Determine domain and path
+    domain = result.get("domain", "")
+    if not domain and synthesis_path:
+        meta, _ = parse_frontmatter(synthesis_path.read_text(encoding="utf-8"))
+        domain = meta.get("domain", synthesis_path.stem.replace("--综合分析", ""))
+    if not synthesis_path:
+        synthesis_path = vault / "wiki" / "syntheses" / f"{domain}--综合分析.md"
+
+    current_conclusion = result.get("current_conclusion", "待补充。")
+    core_claims = result.get("core_claims", [])
+    divergences = result.get("divergences", [])
+    knowledge_gaps = result.get("knowledge_gaps", [])
+
+    # Build source links from existing page or result
+    source_links: list[str] = []
+    if synthesis_path.exists():
+        _, old_body = parse_frontmatter(synthesis_path.read_text(encoding="utf-8"))
+        for link in outbound_links(synthesis_path):
+            if link.startswith("sources/"):
+                source_links.append(f"- [[{link}]]")
 
     lines = [
         "---",
@@ -232,58 +182,71 @@ def build_synthesis_page(vault: Path, synthesis_path: Path) -> str:
         'graph_include: "true"',
         'lifecycle: "official"',
         f'domain: "{domain}"',
-        f'updated_at: "{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}"',
+        f'updated_at: "{today}"',
+        'analysis_method: "llm-driven"',
         "---",
         "",
         f"# {domain} 综合分析",
         "",
         "## 当前结论",
         "",
-        lead,
+        current_conclusion,
         "",
         "## 核心判断",
         "",
     ]
-    lines.extend(f"- {item}" for item in selected[:4])
-    lines.extend(
-        [
-            "",
-            "## 近期来源",
-            "",
-        ]
-    )
-    lines.extend(f"- [[sources/{path.stem}]]" for path in source_paths)
-    lines.extend(
-        [
-            "",
-            "## 相关概念",
-            "",
-        ]
-    )
-    lines.extend((f"- [[{item}]]" for item in concepts),)
-    if not concepts:
+
+    for claim in core_claims:
+        conf = claim.get("confidence", "low")
+        text = claim.get("text", "")
+        evidence_type = claim.get("evidence_type", "")
+        marker = f"{conf}" if conf != "low" else "low⚠️"
+        sources = claim.get("supporting_sources", [])
+        source_ref = f" —— [[{sources[0]}]]" if sources else ""
+        lines.append(f"- [{marker}|{evidence_type}] {text}{source_ref}")
+
+    if divergences:
+        lines.extend(["", "## 分歧与争议", ""])
+        for div in divergences:
+            topic = div.get("topic", "")
+            lines.append(f"### {topic}")
+            lines.append("")
+            for pos in div.get("positions", []):
+                view = pos.get("view", "")
+                sources = pos.get("sources", [])
+                source_ref = f"（[[{sources[0]}]]）" if sources else ""
+                lines.append(f"- {view}{source_ref}")
+            lines.append("")
+
+    if knowledge_gaps:
+        lines.extend(["", "## 知识缺口", ""])
+        for gap in knowledge_gaps:
+            lines.append(f"- {gap}")
+
+    lines.extend(["", "## 近期来源", ""])
+    if source_links:
+        lines.extend(source_links)
+    else:
         lines.append("- 待补充。")
-    lines.extend(
-        [
-            "",
-            "## 待验证 / 后续维护",
-            "",
-        ]
-    )
-    if len(source_paths) <= 1:
+
+    lines.extend(["", "## 待验证 / 后续维护", ""])
+    if len(source_links) <= 1:
         lines.append("- 当前主要基于单一来源，后续需要更多来源补充冲突、边界和反例。")
     else:
         lines.append("- 新来源进入该主题域时，优先检查结论是否被强化、修正或推翻。")
-        lines.append("- 如果不同来源给出不同判断，应补一节“冲突与边界”。")
     lines.append("")
-    return "\n".join(lines)
+
+    synthesis_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Synthesis page written to {synthesis_path}")
 
 
 def main() -> int:
+    fix_windows_encoding()
     args = parse_args()
     vault = resolve_vault(args.vault).resolve()
 
-    targets = []
+    # Determine target synthesis pages
+    targets: list[Path] = []
     if args.domain:
         target = vault / "wiki" / "syntheses" / f"{args.domain}--综合分析.md"
         if not target.exists():
@@ -292,12 +255,33 @@ def main() -> int:
     else:
         targets = sorted((vault / "wiki" / "syntheses").glob("*.md"))
 
+    if args.apply_json:
+        for path in targets:
+            apply_synthesis_result(vault, args.apply_json, synthesis_path=path)
+        return 0
+
+    if args.collect_only:
+        all_data: list[dict] = []
+        for path in targets:
+            all_data.append(collect_synthesis_data(vault, path))
+        output = json.dumps(all_data if len(all_data) > 1 else all_data[0], ensure_ascii=False, indent=2)
+        if args.output:
+            args.output.write_text(output, encoding="utf-8")
+            print(f"Synthesis data written to {args.output}")
+        else:
+            print(output)
+        return 0
+
+    # Legacy mode: heuristic synthesis (deprecated for new domains)
+    # NOTE: This mode uses hardcoded patterns from the 自动驾驶 domain.
+    # For new domains, use --collect-only → LLM → --apply instead.
     updated: list[str] = []
     for path in targets:
-        path.write_text(build_synthesis_page(vault, path), encoding="utf-8")
+        # Import legacy functions only when needed
+        from refresh_synthesis_legacy import build_synthesis_page_legacy
+        path.write_text(build_synthesis_page_legacy(vault, path), encoding="utf-8")
         updated.append(str(path))
-
-    print(json.dumps({"updated": updated}, ensure_ascii=False, indent=2))
+    print(json.dumps({"updated": updated, "mode": "legacy"}, ensure_ascii=False, indent=2))
     return 0
 
 
