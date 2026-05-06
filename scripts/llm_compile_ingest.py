@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from env_compat import resolve_env
-from pipeline.types import DEFAULT_DOMAINS, DOMAIN_MIN_SCORE
+from pipeline.pipeline_types import DEFAULT_DOMAINS, DOMAIN_MIN_SCORE
 from pipeline.encoding_fix import fix_windows_encoding
 
 
@@ -23,22 +23,6 @@ HEADING = re.compile(r"^\s*#+\s*", re.M)
 WIKILINK = re.compile(r"\[\[([^|\]]+)(?:\|([^\]]+))?\]\]")
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 JSON_BLOCK = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.S)
-
-
-def default_runtime_dir() -> Path:
-    candidates: list[Path] = []
-    configured = resolve_env("KWIKI_RUNTIME_DIR")
-    if configured:
-        candidates.append(Path(configured).expanduser())
-    candidates.append(Path.cwd() / ".runtime-fetch")
-    candidates.append(Path(__file__).resolve().parent.parent / ".runtime-fetch")
-    for root in candidates:
-        try:
-            root.mkdir(parents=True, exist_ok=True)
-            return root
-        except OSError:
-            continue
-    raise OSError("No writable runtime directory available.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--extract-facts-only", action="store_true", help="Only run Step 1 (fact extraction) without Step 2 (compile).")
     parser.add_argument("--chunked", action="store_true", help="Split large documents into chunks by chapter headings and generate per-chunk compile payloads. Outputs JSON file with chunk list.")
     parser.add_argument("--chunk-size", type=int, default=500, help="Max lines per chunk when no chapter headings are found (default: 500).")
-    parser.add_argument("--chunk-output", type=Path, default=None, help="Path to write chunked payload JSON file. Defaults to .runtime-fetch/compile-payloads/{slug}_chunks.json.")
+    parser.add_argument("--chunk-output", type=Path, default=None, help="Path to write chunked payload JSON file. Defaults to D:\\tmp\\{slug}_chunks.json on Windows or /tmp/{slug}_chunks.json.")
     return parser.parse_args()
 
 
@@ -361,18 +345,86 @@ _PLAIN_CHAPTER = re.compile(
 _GENERIC_HEADING = re.compile(r"^#{1,4}\s+\S", re.M)
 
 
+_CODE_LINE_RE = re.compile(
+    r"(?:"
+    r"\b(?:return|if|for|while|else|elif|def|class|import|try|except|with|as|var|let|const|func)\b"
+    r"|^[a-zA-Z_]\w*\s*[=<>+\-*/!]"  # assignment-like: x = ..., x <- ...
+    r"|\b\w+\.\w+\("                  # method call: obj.method()
+    r"|\b\w+\("                       # function call: foo(...)
+    r"|\b\w+_\w+\b"                   # snake_case: ptr_copy, get_thread_id
+    r")"
+)
+
+
+def _looks_like_code_line(text: str) -> bool:
+    """Check if a line looks like source code rather than prose."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    # Common code patterns: assignments, function calls, control flow
+    if _CODE_LINE_RE.search(stripped):
+        return True
+    # Lines ending with common code punctuation
+    if stripped.endswith((":", ";", "{", "}")) and len(stripped) < 60:
+        return True
+    return False
+
+
+def _is_real_heading(line: str, idx: int, all_lines: list[str]) -> bool:
+    """Distinguish real Markdown headings from code comments using context.
+
+    A line like '# Get pointer copy' matches the ATX heading pattern but is
+    a code comment embedded in source code. We detect this by checking if
+    adjacent lines look like source code (assignments, function calls, etc).
+
+    Real Markdown headings are usually surrounded by blank lines or prose,
+    not by code lines.
+    """
+    content = re.sub(r"^#+\s*", "", line).strip()
+    if not content:
+        return False
+    # Check adjacent lines for code context
+    code_neighbors = 0
+    for offset in (-2, -1, 1, 2):
+        neighbor_idx = idx + offset
+        if 0 <= neighbor_idx < len(all_lines):
+            if _looks_like_code_line(all_lines[neighbor_idx]):
+                code_neighbors += 1
+    # If 2+ adjacent lines look like code, this is a code comment
+    if code_neighbors >= 2:
+        return False
+    return True
+
+
 def _split_by_headings(lines: list[str], heading_pattern: re.Pattern[str]) -> list[tuple[str, int, int]]:
     """Split lines into chunks bounded by heading matches.
 
     Returns list of (chunk_title, start_line_0based, end_line_exclusive).
-    Skips lines that look like table-of-contents entries (containing '...' or page numbers).
+    Skips lines that look like table-of-contents entries (containing '...'
+    or page numbers), lines inside fenced code blocks, and short code-style
+    comments that match the ATX pattern but aren't real headings.
     """
+    # Track fenced code block state
+    in_code_block = False
     heading_indices = []
     for i, line in enumerate(lines):
         stripped = line.strip()
+        # Detect fenced code block boundaries (``` or ~~~)
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            if not in_code_block:
+                in_code_block = True
+                continue
+            else:
+                in_code_block = False
+                continue
+        if in_code_block:
+            continue
         if heading_pattern.match(stripped):
             # Skip table-of-contents lines (contain dots leader or trailing page numbers)
             if "..." in stripped or re.search(r"\d+\s*$", stripped):
+                continue
+            # Skip code-comment-style lines that aren't real headings
+            if not _is_real_heading(stripped, i, lines):
                 continue
             heading_indices.append(i)
     if not heading_indices:
@@ -1326,7 +1378,8 @@ def main() -> int:
         if args.chunk_output:
             out_path = args.chunk_output
         else:
-            out_path = default_runtime_dir() / "compile-payloads" / f"{slug}_chunks.json"
+            tmp_dir = Path("D:/tmp") if Path("D:/tmp").exists() else Path("/tmp")
+            out_path = tmp_dir / f"{slug}_chunks.json"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         summary = {

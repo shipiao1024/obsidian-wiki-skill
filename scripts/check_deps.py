@@ -318,7 +318,7 @@ def install_camoufox(use_china: bool = False) -> bool:
 
     fetcher = CamoufoxFetcher()
     original_url = fetcher.url
-    version_info = {"release": fetcher.version, "version": fetcher.version}
+    version_info = {"release": fetcher.release, "version": fetcher.version}
 
     # Step 1: Find working mirror
     print("  Step 1: 寻找可用 GitHub 镜像...")

@@ -98,6 +98,14 @@ def init_vault(vault: Path) -> None:
     conf_path = conf_dir / "vault.conf"
     conf_path.write_text(str(vault), encoding="utf-8")
 
+    # Configure Obsidian graph filter (knowledge-layer only, hide raw/sources/briefs/outputs noise)
+    try:
+        from export_main_graph import write_obsidian_graph_config
+        config_paths = write_obsidian_graph_config(vault)
+        created.extend(config_paths)
+    except Exception:
+        pass  # Obsidian config is nice-to-have, not blocking
+
     print(f"Vault initialized: {vault}")
     if created:
         print(f"Created: {', '.join(created)}")

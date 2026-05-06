@@ -164,7 +164,7 @@ python scripts/deep_research.py collect-vault-evidence --vault <vault> --topic "
 2. 打包报告（结构见下方）
 3. 所有强断言带证据标签
 4. 执行 5 项质量门控
-5. 生成 PDF（`deep_research.py` 内部自动调用 `pdf_utils.report_to_pdf()`，排版规格见 `references/pdf-output.md`）
+5. 生成 PDF
 
 ```
 python scripts/deep_research.py finalize-report --vault <vault> --topic "<topic>" --report-file report.md --run-closure

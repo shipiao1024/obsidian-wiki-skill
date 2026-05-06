@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .types import Article, DEFAULT_DOMAINS
+from .pipeline_types import Article, DEFAULT_DOMAINS
 from .text_utils import parse_frontmatter, sanitize_filename
 
 CONF_DIR = Path.home() / ".claude" / "obsidian-wiki"

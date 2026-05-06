@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
-from .types import Article
+from .pipeline_types import Article
 from .text_utils import slugify_article, parse_frontmatter
 from .extractors import detect_domain_mismatch, concept_slug, comparison_slug, domain_slug, entity_slug
 from .vault_config import transcript_page_name
@@ -34,24 +33,6 @@ def _get_compile():
 
 
 _ACTIONABLE_ORDINALS = {"Working", "Supported", "Stable"}
-
-
-def _runtime_payload_dir() -> Path:
-    """Return a writable local runtime directory for prepare-only payload dumps."""
-    candidates: list[Path] = []
-    configured = os.environ.get("KWIKI_RUNTIME_DIR")
-    if configured:
-        candidates.append(Path(configured).expanduser())
-    candidates.append(Path.cwd() / ".runtime-fetch")
-    candidates.append(Path(__file__).resolve().parents[2] / ".runtime-fetch")
-    for root in candidates:
-        try:
-            payload_dir = root / "compile-payloads"
-            payload_dir.mkdir(parents=True, exist_ok=True)
-            return payload_dir
-        except OSError:
-            continue
-    raise OSError("No writable runtime directory available for compile payloads.")
 
 
 def _determine_lifecycle(compiled_payload: dict | None, article: Article) -> str:
@@ -145,10 +126,12 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
     write_page(raw_path, build_raw_page(article, slug, assets_dir), force)
     compiled_payload, compile_reason = _get_compile().try_llm_compile(vault, article, slug, raw_path, no_llm_compile, mode=effective_compile_mode, chunk_size=chunk_size)
 
-    # Persist prepare-only payload to a local writable runtime directory.
+    # Persist prepare-only payload to D:\tmp
     if compiled_payload and compiled_payload.get("prepare_only"):
         try:
-            payload_path = _runtime_payload_dir() / f"{slug}_payload.json"
+            tmp_dir = Path("D:/tmp")
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            payload_path = tmp_dir / f"{slug}_payload.json"
             payload_path.write_text(json.dumps(compiled_payload, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"[payload] Prepare-only payload saved to {payload_path}", file=sys.stderr)
         except Exception as exc:
@@ -297,6 +280,13 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
         _write_mermaid(vault)
     except Exception:
         pass  # graph rebuild is non-critical; don't block ingestion
+
+    # --- Ensure Obsidian graph filter is configured (idempotent) ---
+    try:
+        from export_main_graph import write_obsidian_graph_config as _write_obsidian_config
+        _write_obsidian_config(vault)
+    except Exception:
+        pass
 
     # --- Rebuild domain subgraph pages ---
     try:

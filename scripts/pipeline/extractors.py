@@ -11,7 +11,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from .types import (
+from .pipeline_types import (
     Article,
     CONCEPT_PAGE_THRESHOLD,
     CONCEPT_STOPWORDS,

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Claude Obsidian Wiki Skill"
+  short_description: "在 Codex/Claude 对话里抓取多来源内容、编译 brief/source 并写回 Obsidian"
+  default_prompt: "Use $Claude-obsidian-wiki-skill to handle Obsidian knowledge workflows inside the conversation: ingest WeChat/web/video/local/text sources into raw, prepare compile context, produce structured brief/source JSON in the current session, write it back into the Obsidian wiki, and continue with query/review/apply maintenance when needed."
+

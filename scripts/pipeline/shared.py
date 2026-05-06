@@ -1,7 +1,7 @@
 """Backward-compatibility shim — all functions re-exported from split modules.
 
 The original shared.py has been split into:
-  pipeline/types.py      — Article dataclass, WIKI_DIRS, constants
+  pipeline/pipeline_types.py — Article dataclass, WIKI_DIRS, constants
   pipeline/text_utils.py — regex helpers, plain_text, parse_frontmatter, section_excerpt
   pipeline/extractors.py — detect_domains, extract_concepts/entities, taxonomy helpers
   pipeline/vault_config.py — resolve_vault, vault registry, DEFAULT_DOMAINS, domain keywords
@@ -9,7 +9,7 @@ The original shared.py has been split into:
 This shim preserves all existing import paths (from pipeline.shared import ...).
 """
 
-from .types import (
+from .pipeline_types import (
     Article,
     WIKI_DIRS,
     DOMAIN_MIN_SCORE,

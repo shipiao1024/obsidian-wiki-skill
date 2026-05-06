@@ -2,6 +2,45 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+
+_DOUYIN_HOST_RE = re.compile(r"^(?:www\.)?douyin\.com$", re.IGNORECASE)
+
+
+def pre_normalize_url(url: str) -> str:
+    """Rewrite ambiguous Douyin URLs to canonical video URLs before source matching.
+
+    Douyin SPA URLs can carry ``modal_id`` or ``vid`` query parameters that
+    point to a specific video, but the URL path may still look like a user
+    page, search page, or collection page.  Without normalization the path-based
+    source_id wins (priority 95/96), the video-specific parameter is lost, and
+    the pipeline tries to ingest the entire user page instead of the intended
+    single video.
+
+    Rules (applied in order):
+    1. If ``modal_id`` is present → ``https://www.douyin.com/video/{modal_id}``
+       (modal_id always wins over vid, because it represents the currently
+       active video overlay in the SPA).
+    2. If ``vid`` is present (no modal_id) on a non-/video/ Douyin URL
+       → ``https://www.douyin.com/video/{vid}``.
+    3. Otherwise → return url unchanged.
+    """
+    parsed = urlparse(url)
+    if not _DOUYIN_HOST_RE.match(parsed.hostname or ""):
+        return url
+
+    qs = parse_qs(parsed.query)
+
+    modal_id = (qs.get("modal_id") or [""])[0].strip()
+    if modal_id.isdigit():
+        return f"https://www.douyin.com/video/{modal_id}"
+
+    vid = (qs.get("vid") or [""])[0].strip()
+    if vid.isdigit() and not parsed.path.startswith("/video/"):
+        return f"https://www.douyin.com/video/{vid}"
+
+    return url
 
 
 SOURCE_REGISTRY: dict[str, dict[str, object]] = {

@@ -5,7 +5,6 @@ import re
 import json
 import shutil
 import subprocess
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -14,24 +13,6 @@ from .types import AdapterStatus, AdapterResult, AssetItem, make_error_result, b
 from .utils import parse_configured_command
 from .quality import assess_video_quality
 from env_compat import resolve_env
-
-
-def _runtime_cookie_dir() -> Path:
-    """Return a writable local directory for transient cookie files."""
-    candidates: list[Path] = []
-    configured = resolve_env("KWIKI_RUNTIME_DIR")
-    if configured:
-        candidates.append(Path(configured).expanduser())
-    candidates.append(Path.cwd() / ".runtime-fetch")
-    candidates.append(Path(__file__).resolve().parents[2] / ".runtime-fetch")
-    for root in candidates:
-        try:
-            cookie_dir = root / "cookies"
-            cookie_dir.mkdir(parents=True, exist_ok=True)
-            return cookie_dir
-        except OSError:
-            continue
-    raise OSError("No writable runtime directory available for temporary cookie files.")
 
 
 def resolve_video_adapter_command() -> list[str] | None:
@@ -66,6 +47,7 @@ def _try_cdp_cookie_file(domains: list[str] | None = None) -> Path | None:
 
     Returns the path to the temp file, or None if CDP extraction fails.
     """
+    import tempfile
     try:
         from cdp_extract_cookies import try_extract_from_browser, cookies_to_netscape
     except ImportError:
@@ -76,16 +58,9 @@ def _try_cdp_cookie_file(domains: list[str] | None = None) -> Path | None:
         except Exception:
             continue
         if cookies:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                suffix=".txt",
-                prefix="kwiki_cdp_cookies_",
-                dir=_runtime_cookie_dir(),
-                delete=False,
-                encoding="utf-8",
-            ) as handle:
-                handle.write(cookies_to_netscape(cookies))
-                return Path(handle.name)
+            tmp = Path(tempfile.mktemp(suffix=".txt", prefix="kwiki_cdp_cookies_"))
+            tmp.write_text(cookies_to_netscape(cookies), encoding="utf-8")
+            return tmp
     return None
 
 

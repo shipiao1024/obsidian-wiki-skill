@@ -11,7 +11,6 @@ import wiki_ingest as _wi  # noqa: F401
 from pipeline.shared import (  # noqa: F401
     Article,
     WIKI_DIRS,
-    resolve_vault,
     sanitize_filename,
     slugify_article,
     parse_frontmatter,

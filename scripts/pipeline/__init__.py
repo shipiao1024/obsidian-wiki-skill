@@ -1,7 +1,7 @@
 """Pipeline package: modular stages for wiki ingestion.
 
 Core modules:
-  types.py              — Article dataclass, WIKI_DIRS, constants
+  pipeline_types.py      — Article dataclass, WIKI_DIRS, constants
   text_utils.py         — regex helpers, plain_text, parse_frontmatter, section_excerpt
   extractors.py         — detect_domains, extract_concepts/entities, taxonomy helpers
   vault_config.py       — resolve_vault, multi-vault registry, video/transcript helpers
@@ -14,7 +14,7 @@ Core modules:
   output/               — 9 query output mode subpackage
 """
 
-from pipeline.types import Article, WIKI_DIRS
+from pipeline.pipeline_types import Article, WIKI_DIRS
 from pipeline.fetch import (
     collect_urls,
     collect_local_files,

@@ -25,22 +25,6 @@ _DEFAULT_TOOL_DIR = SKILL_DIR / ".tools" / "wechat-article-for-ai"
 _DEFAULT_DEPS_DIR = SKILL_DIR / ".python-packages"
 
 
-def _default_runtime_root() -> Path:
-    configured = os.environ.get("KWIKI_RUNTIME_DIR")
-    candidates: list[Path] = []
-    if configured:
-        candidates.append(Path(configured).expanduser())
-    candidates.append(Path.cwd() / ".runtime-fetch")
-    candidates.append(SKILL_DIR / ".runtime-fetch")
-    for candidate in candidates:
-        try:
-            candidate.mkdir(parents=True, exist_ok=True)
-            return candidate
-        except OSError:
-            continue
-    raise SystemExit("No writable runtime directory available. Set KWIKI_RUNTIME_DIR to a writable path.")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Supporting script for fetch+heuristic or fetch+api-compile into an Obsidian LLM wiki."
@@ -132,7 +116,7 @@ def main() -> int:
             input_dir = args.work_dir.resolve()
             input_dir.mkdir(parents=True, exist_ok=True)
         else:
-            runtime_root = _default_runtime_root()
+            runtime_root = Path.cwd() / ".runtime-fetch"
             input_dir, cleanup = _fetch.create_runtime_input_dir(runtime_root)
         articles = _fetch.load_articles_from_inputs(args, input_dir, vault=vault, collection_contexts=collection_contexts)
 

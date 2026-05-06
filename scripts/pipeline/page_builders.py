@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .types import Article
+from .pipeline_types import Article
 from .text_utils import top_lines, brief_lead, section_excerpt, plain_text, parse_frontmatter
 from .extractors import (
     concept_slug,
@@ -600,13 +600,19 @@ def build_source_page_from_compile(vault: Path, article: Article, slug: str, com
 # Knowledge pages (concept, entity, domain, synthesis, comparison)
 # ---------------------------------------------------------------------------
 
-def build_concept_page(name: str, source_slug: str, domains: list[str] | None = None) -> str:
+def build_concept_page(name: str, source_slug: str, domains: list[str] | None = None, definition: str = "", related_entities: list[str] | None = None) -> str:
     """Build a concept page. Domains should come from LLM compile, not script detection."""
     domain_links = []
     if domains:
         domain_links = [f"- [[domains/{domain_slug(domain)}]]" for domain in domains]
     else:
         domain_links = ["- 待补充。"]
+    entity_links = []
+    if related_entities:
+        entity_links = [f"- [[entities/{entity_slug(e)}]]" for e in related_entities]
+    else:
+        entity_links = ["- 待补充。"]
+    definition_text = definition.strip() if definition and definition.strip() else "- 待后续 query / lint / 人工复核补充定义。"
     return "\n".join(
         [
             "---",
@@ -622,7 +628,7 @@ def build_concept_page(name: str, source_slug: str, domains: list[str] | None = 
             "",
             "## 定义",
             "",
-            "- 待后续 query / lint / 人工复核补充定义。",
+            definition_text,
             "",
             "## 来自来源",
             "",
@@ -630,7 +636,7 @@ def build_concept_page(name: str, source_slug: str, domains: list[str] | None = 
             "",
             "## 相关实体",
             "",
-            "- 待补充。",
+            *entity_links,
             "",
             "## 相关主题域",
             "",
@@ -640,13 +646,19 @@ def build_concept_page(name: str, source_slug: str, domains: list[str] | None = 
     )
 
 
-def build_entity_page(name: str, source_slug: str, domains: list[str] | None = None) -> str:
+def build_entity_page(name: str, source_slug: str, domains: list[str] | None = None, definition: str = "", related_concepts: list[str] | None = None) -> str:
     """Build an entity page. Domains should come from LLM compile, not script detection."""
     domain_links = []
     if domains:
         domain_links = [f"- [[domains/{domain_slug(domain)}]]" for domain in domains]
     else:
         domain_links = ["- 待补充。"]
+    concept_links = []
+    if related_concepts:
+        concept_links = [f"- [[concepts/{concept_slug(c)}]]" for c in related_concepts]
+    else:
+        concept_links = ["- 待补充。"]
+    definition_text = definition.strip() if definition and definition.strip() else "- 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。"
     return "\n".join(
         [
             "---",
@@ -662,7 +674,7 @@ def build_entity_page(name: str, source_slug: str, domains: list[str] | None = N
             "",
             "## 类型",
             "",
-            "- 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。",
+            definition_text,
             "",
             "## 来自来源",
             "",
@@ -670,7 +682,7 @@ def build_entity_page(name: str, source_slug: str, domains: list[str] | None = N
             "",
             "## 相关概念",
             "",
-            "- 待补充。",
+            *concept_links,
             "",
             "## 相关主题域",
             "",
@@ -680,7 +692,10 @@ def build_entity_page(name: str, source_slug: str, domains: list[str] | None = N
     )
 
 
-def build_domain_page(name: str, source_slug: str) -> str:
+def build_domain_page(name: str, source_slug: str, *, definition: str = "", concept_names: list[str] | None = None, entity_names: list[str] | None = None) -> str:
+    overview = definition or "待随着更多来源持续演化。"
+    concept_links = [f"- [[concepts/{concept_slug(c)}]]" for c in (concept_names or [])] or ["- 待补充。"]
+    entity_links = [f"- [[entities/{entity_slug(e)}]]" for e in (entity_names or [])] or ["- 待补充。"]
     return "\n".join(
         [
             "---",
@@ -696,7 +711,7 @@ def build_domain_page(name: str, source_slug: str) -> str:
             "",
             "## 概览",
             "",
-            "- 待随着更多来源持续演化。",
+            overview,
             "",
             "## 来源",
             "",
@@ -708,7 +723,11 @@ def build_domain_page(name: str, source_slug: str) -> str:
             "",
             "## 关键概念",
             "",
-            "- 待补充。",
+            *concept_links,
+            "",
+            "## 相关实体",
+            "",
+            *entity_links,
             "",
         ]
     )

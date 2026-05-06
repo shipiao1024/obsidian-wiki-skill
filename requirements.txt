@@ -74,14 +74,6 @@ faster-whisper>=1.0    # 无字幕视频 ASR（tiny~75MB, small~460MB, medium~1.
 pypdf>=6.0             # PDF 文本提取
 
 # -----------------------------------------------------------------------------
-# [PDF 生成] Markdown → PDF 导出（Brief / Deep Research 报告） — 按需安装
-#   安装方式（标准）：pip install markdown playwright && playwright install chromium
-#   安装方式（中国镜像）：pip install markdown playwright -i https://pypi.tuna.tsinghua.edu.cn/simple && playwright install chromium
-# -----------------------------------------------------------------------------
-markdown>=3.5          # Markdown → HTML 转换
-playwright>=1.40       # Chrome 渲染引擎，导出 PDF
-
-# -----------------------------------------------------------------------------
 # [格式归一化] 文档/表格/电子书格式统一转 Markdown — 按需安装
 #   安装方式（标准）：pip install markitdown pandas openpyxl ebooklib beautifulsoup4
 #   安装方式（中国镜像）：pip install markitdown pandas openpyxl ebooklib beautifulsoup4 -i https://pypi.tuna.tsinghua.edu.cn/simple

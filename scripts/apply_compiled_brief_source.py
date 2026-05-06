@@ -14,18 +14,26 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from wiki_ingest_wechat import (
-    Article,
+from pipeline.shared import Article, sanitize_filename, parse_frontmatter
+from pipeline.apply import (
     build_brief_page_from_compile,
     build_source_page_from_compile,
-    sanitize_filename,
     ensure_synthesis_pages,
     ensure_taxonomy_pages,
-    parse_frontmatter,
     rebuild_index,
 )
 from pipeline.validate_compile import validate_compile_result, grounding_validate, density_check
 from pipeline.encoding_fix import fix_windows_encoding
+
+
+def _lifecycle_from_payload(compiled_payload: dict | None) -> str:
+    if not compiled_payload or compiled_payload.get("schema_version") != "2.0":
+        return "official"
+    result = compiled_payload.get("result", {}) if isinstance(compiled_payload.get("result"), dict) else {}
+    review_hints = result.get("review_hints", {}) if isinstance(result.get("review_hints"), dict) else {}
+    if review_hints.get("needs_human_review", False):
+        return "candidate"
+    return "official"
 
 
 def parse_args() -> argparse.Namespace:
@@ -560,7 +568,7 @@ def main() -> int:
     brief_path.write_text(build_brief_page_from_compile(article, slug, compiled), encoding="utf-8")
     source_path.write_text(build_source_page_from_compile(vault, article, slug, compiled), encoding="utf-8")
     domains = compiled_domains(compiled)
-    ensure_taxonomy_pages(vault, article, slug, args.force, domains_override=domains or None)
+    ensure_taxonomy_pages(vault, article, slug, args.force, domains_override=domains or None, compiled_payload=compiled_payload, source_lifecycle=_lifecycle_from_payload(compiled_payload))
     ensure_synthesis_pages(vault, article, slug, domains_override=domains or None)
     emitted_deltas = emit_update_proposals_as_deltas(
         vault=vault,

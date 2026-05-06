@@ -171,7 +171,7 @@ def load_articles_from_video_collection(
     from adapter_result_to_article import adapter_result_to_article
     from import_jobs import completed_video_ids, completed_video_items, ensure_import_job, load_import_job
     from source_adapters import expand_video_collection_urls, run_adapter_for_source
-    from source_registry import match_source_from_url
+    from source_registry import match_source_from_url, pre_normalize_url
 
     normalized_collection_url = normalize_collection_url(source_id, collection_url)
     expanded_urls = expand_video_collection_urls(
@@ -444,7 +444,7 @@ def load_articles_from_urls(
     vault: Path | None = None,
     collection_contexts: list[dict[str, object]] | None = None,
 ) -> list[Article]:
-    from source_registry import match_source_from_url
+    from source_registry import match_source_from_url, pre_normalize_url
 
     staged_root = input_dir / "staged"
     staged_root.mkdir(parents=True, exist_ok=True)
@@ -452,6 +452,7 @@ def load_articles_from_urls(
     fallback_urls: list[str] = []
 
     for index, url in enumerate(urls):
+        url = pre_normalize_url(url)
         source_id = match_source_from_url(url)
         playlist_ids = {"video_playlist_youtube", "video_playlist_bilibili", "video_playlist_douyin", "video_collection_douyin"}
         if source_id in playlist_ids:
@@ -516,7 +517,7 @@ def load_articles_from_inputs(
 ) -> list[Article]:
     from adapter_result_to_article import adapter_result_to_article
     from source_adapters import run_adapter_for_source
-    from source_registry import match_source_from_file, match_source_from_url
+    from source_registry import match_source_from_file, match_source_from_url, pre_normalize_url
 
     staged_root = input_dir / "staged"
     staged_root.mkdir(parents=True, exist_ok=True)
@@ -524,6 +525,7 @@ def load_articles_from_inputs(
     fallback_urls: list[str] = []
 
     for index, url in enumerate(collect_urls(args)):
+        url = pre_normalize_url(url)
         source_id = match_source_from_url(url)
         playlist_ids = {"video_playlist_youtube", "video_playlist_bilibili", "video_playlist_douyin", "video_collection_douyin"}
         if source_id in playlist_ids:

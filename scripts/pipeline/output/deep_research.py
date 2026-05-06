@@ -17,7 +17,7 @@ def build_deep_research_output(
 
     This mode does NOT execute the research itself (LLM-first principle).
     It produces a briefing of existing vault knowledge and a protocol checklist
-    that you follow to orchestrate the 8-phase reasoning-driven research cycle.
+    that you follow to orchestrate the 9-phase research cycle.
     """
     from pipeline.digest import build_research_report
 

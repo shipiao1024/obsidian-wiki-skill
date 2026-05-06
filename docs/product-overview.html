@@ -114,7 +114,7 @@
   .f-highlight .f-icon { font-size:24px; }
 
   /* ---- VALUE ---- */
-  .value-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .value-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .v-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:18px 16px; display:flex; gap:10px; transition:border-color 0.3s; }
   .v-card:hover { border-color:var(--accent); }
   .v-num { flex-shrink:0; width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; background:rgba(108,92,231,0.1); color:var(--accent2); }
@@ -150,7 +150,9 @@
       <a href="#s1">概述</a>
       <a href="#s2">架构</a>
       <a href="#s3">三阶段模式</a>
+      <a href="#s4">入库时序</a>
       <a href="#s4b">分块精读</a>
+      <a href="#s5">深度研究</a>
       <a href="#s6">能力</a>
       <a href="#s7">价值</a>
     </div>
@@ -236,7 +238,7 @@
             <div class="arch-item">域子图页面</div>
             <div class="arch-item">主张演化（LLM 驱动）</div>
             <div class="arch-item">深度研究触发</div>
-            <div class="arch-item">5 项质量门控</div>
+            <div class="arch-item">7 项红线检验</div>
           </div>
         </div>
       </div>
@@ -259,7 +261,7 @@
         </div>
         <div class="arch-output">
           <h4>深度研究</h4>
-          <p>推理驱动 8 阶段<br>横纵双轴 + 5 项质量门控 + PDF</p>
+          <p>9 阶段假说驱动<br>质量门控 + PDF 报告</p>
         </div>
         <div class="arch-output">
           <h4>知识图谱</h4>
@@ -371,6 +373,59 @@
   </div>
 </section>
 
+<!-- ==================== SLIDE 4: INGEST SEQUENCE ==================== -->
+<section class="slide" id="s4">
+  <div class="slide-inner" style="padding-top:52px;padding-bottom:8px;">
+    <div class="slide-header">
+      <div class="slide-label">Ingest Flow</div>
+      <div class="slide-title">单篇入库完整时序</div>
+    </div>
+    <div class="seq-container fade-in" style="height:calc(100vh - 130px);">
+      <pre class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant O as orchestrator
+    participant A as adapters
+    participant C as compile (Two-Step CoT)
+    participant P as page_builders
+    participant T as taxonomy
+    participant Q as question
+    participant S as stance
+    participant G as graph
+    participant GL as graph_layers
+    participant DR as triggers
+    participant R as report (LLM-driven)
+    participant PDF as pdf_utils
+
+    U->>O: ingest_article(vault, article)
+    O->>A: fetch + format normalization
+    A-->>O: Markdown + metadata
+    O->>O: write raw/articles/{slug}.md
+    O->>C: try_llm_compile()
+    Note over C: Step 1: fact_extraction<br>Step 2: structure_compile (constrained by ingest_compile_v2)
+    C-->>O: compiled_payload (v2 JSON)
+    O->>P: build_brief_page()
+    P-->>O: brief md
+    O->>PDF: brief_to_pdf()
+    PDF-->>O: {slug}.pdf
+    O->>P: build_source_page()
+    O->>T: ensure_taxonomy_pages()
+    T->>T: concepts/ + entities/ + domains/
+    O->>Q: write_question_page()
+    O->>S: apply_stance_impact()
+    O->>T: ensure_comparison_page()
+    O->>G: write_knowledge_graph()
+    O->>GL: build_all_domain_subgraphs()
+    Note over O: claim evolution 由 LLM 按 claim_evolution.md 分析
+    O->>R: collect_ingest_data() → LLM 按 ingest_impact.md 分析
+    O->>DR: detect_triggers()
+    DR-->>O: deep research suggestions
+    O-->>U: result (status + PDF + report + triggers)
+      </pre>
+    </div>
+  </div>
+</section>
+
 <!-- ==================== SLIDE 4B: CHUNKED DEEP-READING ==================== -->
 <section class="slide" id="s4b">
   <div class="slide-inner">
@@ -416,6 +471,64 @@
   </div>
 </section>
 
+<!-- ==================== SLIDE 5: DEEP RESEARCH SEQUENCE ==================== -->
+<section class="slide" id="s5">
+  <div class="slide-inner" style="padding-top:52px;padding-bottom:8px;">
+    <div class="slide-header">
+      <div class="slide-label">Deep Research Flow</div>
+      <div class="slide-title">深度研究完整时序</div>
+    </div>
+    <div class="seq-container fade-in" style="height:calc(100vh - 130px);">
+      <pre class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant A as Claude Code (LLM)
+    participant DR as deep_research.py
+    participant DL as dependency_ledger
+    participant V as validation
+    participant PDF as pdf_utils
+
+    U->>A: "深入研究 X"
+    A->>A: Phase 0: 读 hot.md + 立场 + 问题
+    A->>U: Phase 1: 为什么重要？
+    U-->>A: 真实需求
+    A->>A: Phase 2: 形成 2-4 假说（按 research_hypothesis.md 约束）
+    A->>DR: init(topic, hypotheses)
+    DR->>DL: init_ledger_page()
+    DR-->>A: ledger_path
+    A->>DR: Phase 3: collect_vault_evidence()
+    DR-->>A: candidates（脚本预排序，LLM 按 F/I/A 重新分类）
+    loop Phase 4: Adaptive Rounds
+        A->>A: WebSearch 确认 + 反驳
+        A->>A: 结果走 ingest pipeline
+        A->>DL: update-confidence (+/-15-35%)
+        A->>DR: check-sufficiency()
+        alt 不通过
+            A->>A: 继续下一轮
+        end
+    end
+    A->>A: Phase 5: 外部事实校准
+    A->>A: Phase 6: 根本问题挖掘
+    A->>DR: Phase 7: record-scenarios()
+    A->>DR: Phase 8: record-premortem()
+    A->>A: Phase 9: 打包 Why/What/How/Trace
+    A->>DR: finalize_report()
+    Note over DR,V: Phase 9.5: 质量门控
+    DR->>V: validate_report()
+    V->>V: 7 项红线 + 依赖链审查
+    V-->>DR: ValidationResult
+    DR->>DR: 附录 A 写入报告
+    DR->>PDF: report_to_pdf()
+    PDF-->>DR: {slug}--report.pdf
+    DR-->>A: {report_path, pdf_path, validation}
+    A->>DR: update_closure()
+    DR->>DR: 更新 question/stance/hot/log
+    A-->>U: 报告 + PDF + 验证结果
+      </pre>
+    </div>
+  </div>
+</section>
+
 <!-- ==================== SLIDE 6: CORE CAPABILITIES ==================== -->
 <section class="slide" id="s6">
   <div class="slide-inner">
@@ -442,23 +555,17 @@
         <p>6 维骨架（生成力叙事 / 数据 / 推演 / 失效信号 / 方法论评估 / 隐性假设） + 40 条主张清单 + 置信度标注 + 来源溯源</p>
         <span class="f-tag">ingest_compile_v2</span>
       </div>
-      <div class="f-card f-highlight">
-        <div class="f-icon">&#128300;</div>
-        <h4>Deep Research 深度研究</h4>
-        <p>推理驱动 8 阶段协议：横向追同期广度（竞品对比→生态位→趋势），纵向追时间深度（起源→演进→决策逻辑），5 项质量门控 + PDF</p>
-        <span class="f-tag">deep-research</span>
-      </div>
       <div class="f-card">
         <div class="f-icon">&#128300;</div>
+        <h4>假说驱动深度研究</h4>
+        <p>9 阶段推理驱动：假说形成 → 自适应搜索 → 证据校准 → 压力测试 → 7 项红线质量门控 + PDF 报告</p>
+        <span class="f-tag">deep_research</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128640;</div>
         <h4>跨域联想 + 迁移结论</h4>
         <p>bridge_logic → migration_conclusion，不只是"相似"而是"可迁移策略"</p>
         <span class="f-tag">cross_domain_insights</span>
-      </div>
-      <div class="f-card">
-        <div class="f-icon">&#128269;</div>
-        <h4>口语化查询 + 智能路由</h4>
-        <p>用户说自然语言 → LLM 理解意图 → 语义检索 + 综合 → 10 种输出格式自动匹配</p>
-        <span class="f-tag">query_synthesis</span>
       </div>
       <div class="f-card">
         <div class="f-icon">&#128736;</div>
@@ -467,16 +574,34 @@
         <span class="f-tag">stance_impacts</span>
       </div>
       <div class="f-card">
-        <div class="f-icon">&#127760;</div>
-        <h4>知识图谱自动优化</h4>
-        <p>Mermaid 原生渲染 + Louvain 社区分组 + 度数剪枝自动净化关系。域子图页面按领域筛选，解决大图谱噪音问题</p>
-        <span class="f-tag">graph_cleanup</span>
-      </div>
-      <div class="f-card">
         <div class="f-icon">&#128272;</div>
         <h4>来源溯源验证</h4>
         <p>grounding_quote 回溯原文，ASR/PDF 容差匹配，证据类型标注</p>
         <span class="f-tag">grounding_validate</span>
+      </div>
+      <div class="f-card f-highlight">
+        <div class="f-icon">&#127760;</div>
+        <h4>Obsidian 原生图谱自动化</h4>
+        <p>知识图谱 Mermaid + Louvain 社区分组 + 域子图页面 + graph_trim 自动精简 + 双向链接即时可见</p>
+        <span class="f-tag">graph_layers</span>
+      </div>
+      <div class="f-card f-highlight">
+        <div class="f-icon">&#128209;</div>
+        <h4>两层证据架构</h4>
+        <p>raw/ 不可变原始证据 vs wiki/ 可演化知识层——溯源永远可回原文，编译永远可再迭代</p>
+        <span class="f-tag">raw+wiki</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128200;</div>
+        <h4>主张演化追踪</h4>
+        <p>每次入库检测 reinforce/contradict/extend，主张从 Seeded → Supported 逐步成熟，知识库从存储升级为判断</p>
+        <span class="f-tag">claim_evolution</span>
+      </div>
+      <div class="f-card">
+        <div class="f-icon">&#128295;</div>
+        <h4>Schema 自动修正</h4>
+        <p>LLM 编译偏差自动纠错：枚举映射 + 嵌套层级修正 + 对象转字符串，用户无需手动修 JSON</p>
+        <span class="f-tag">auto-correct</span>
       </div>
     </div>
   </div>
@@ -522,7 +647,7 @@
         <div class="v-num">5</div>
         <div>
           <h4>报告质量门控</h4>
-          <p>5 项质量门控 + 依赖链审查 + 三剧本推演</p>
+          <p>7 项红线检验 + 依赖链审查 + 假说压力测试</p>
         </div>
       </div>
       <div class="v-card">
@@ -530,6 +655,27 @@
         <div>
           <h4>来源溯源验证</h4>
           <p>grounding_quote 回溯原文，ASR/PDF 容差匹配，证据类型标注</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">7</div>
+        <div>
+          <h4>假说驱动深度研究</h4>
+          <p>9 阶段推理驱动 + 自适应搜索 + 7 项红线质量门控，产出可审计的研究报告</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">8</div>
+        <div>
+          <h4>Obsidian 原生图谱</h4>
+          <p>知识图谱自动生成 + 域子图 + Louvain 分组 + 自动精简，直接在 Obsidian 中可视化</p>
+        </div>
+      </div>
+      <div class="v-card">
+        <div class="v-num">9</div>
+        <div>
+          <h4>两层证据架构</h4>
+          <p>raw/ 不可变溯源 vs wiki/ 可演化编译——存的是证据，读的是判断</p>
         </div>
       </div>
     </div>

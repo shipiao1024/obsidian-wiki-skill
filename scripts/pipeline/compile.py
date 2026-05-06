@@ -260,26 +260,56 @@ def compiled_domains_from_payload(compiled_payload: dict[str, object] | None) ->
     return None
 
 
-def promoted_taxonomy_names_from_payload(
+def taxonomy_items_from_payload(
     compiled_payload: dict[str, object] | None,
     kind: str,
-) -> list[str]:
+    include_candidates: bool = True,
+) -> list[dict[str, object]]:
+    """Extract taxonomy items (concepts or entities) with full metadata.
+
+    By default includes both promote_to_official_candidate and create_candidate.
+    Set include_candidates=False to only return promoted items.
+    Each item gets an extra 'is_candidate' flag when action is create_candidate.
+    """
     if not isinstance(compiled_payload, dict) or compiled_payload.get("schema_version") != "2.0":
         return []
     result = compiled_payload.get("result")
     knowledge_proposals = result.get("knowledge_proposals") if isinstance(result, dict) else {}
     proposals = knowledge_proposals.get(kind) if isinstance(knowledge_proposals, dict) else []
-    names: list[str] = []
+    items: list[dict[str, object]] = []
     if not isinstance(proposals, list):
-        return names
+        return items
+    seen_names: set[str] = set()
+    create_actions = {"promote_to_official_candidate"}
+    if include_candidates:
+        create_actions.add("create_candidate")
     for item in proposals:
         if not isinstance(item, dict):
             continue
         name = item.get("name", "").strip() if isinstance(item.get("name"), str) else ""
         action = item.get("action", "").strip() if isinstance(item.get("action"), str) else ""
-        if name and action == "promote_to_official_candidate" and name not in names:
-            names.append(name)
-    return names
+        if name and action in create_actions and name not in seen_names:
+            seen_names.add(name)
+            materialized = dict(item)
+            materialized["is_candidate"] = (action == "create_candidate")
+            items.append(materialized)
+    return items
+
+
+def promoted_taxonomy_items_from_payload(
+    compiled_payload: dict[str, object] | None,
+    kind: str,
+) -> list[dict[str, object]]:
+    """Backward-compatible wrapper: only returns promote_to_official_candidate items."""
+    return taxonomy_items_from_payload(compiled_payload, kind, include_candidates=False)
+
+
+def promoted_taxonomy_names_from_payload(
+    compiled_payload: dict[str, object] | None,
+    kind: str,
+) -> list[str]:
+    """Backward-compatible wrapper: returns only names."""
+    return [item["name"] for item in promoted_taxonomy_items_from_payload(compiled_payload, kind) if isinstance(item.get("name"), str)]
 
 
 def build_delta_page_from_update_proposal_local(

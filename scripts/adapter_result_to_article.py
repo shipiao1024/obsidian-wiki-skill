@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 from source_adapters import AdapterResult
-from wiki_ingest_wechat import Article
+from pipeline.shared import Article
 
 
 def safe_filename(name: str) -> str:

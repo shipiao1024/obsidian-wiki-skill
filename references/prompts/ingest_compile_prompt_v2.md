@@ -147,8 +147,30 @@
         "grounding_quote": ""
       }
     ],
-    "concepts": [],
-    "entities": []
+    "concepts": [
+      {
+        "name": "",
+        "action": "link_existing | create_candidate | promote_to_official_candidate | no_page",
+        "definition": "",  // 1-2 sentence definition: what this concept means IN THIS SOURCE's context. Must be specific enough that a reader understands the concept without reading the source.
+        "reason": "",
+        "confidence": "Seeded | Preliminary | Working | Supported | Stable",
+        "evidence": [],
+        "evidence_type": "fact | inference | assumption | hypothesis | disputed | gap",
+        "grounding_quote": ""
+      }
+    ],
+    "entities": [
+      {
+        "name": "",
+        "action": "link_existing | create_candidate | promote_to_official_candidate | no_page",
+        "definition": "",  // 1-2 sentence description: what this entity IS (type, role, key attributes). For people: role+org; for products: category+core feature; for orgs: industry+scope.
+        "reason": "",
+        "confidence": "Seeded | Preliminary | Working | Supported | Stable",
+        "evidence": [],
+        "evidence_type": "fact | inference | assumption | hypothesis | disputed | gap",
+        "grounding_quote": ""
+      }
+    ]
   },
   "update_proposals": [],
   "claim_inventory": [                        // ← 在 document_outputs 外面，与 document_outputs 平级

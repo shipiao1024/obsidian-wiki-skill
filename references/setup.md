@@ -11,7 +11,7 @@
   .python-packages/
 ```
 
-`wiki_ingest_wechat.py` 默认会从当前工作区查找 `.tools/wechat-article-for-ai`。如果上游工具放在别处，使用 `--tool-dir` 或环境变量 `WECHAT_ARTICLE_FOR_AI_DIR`。
+`wiki_ingest.py`（统一入库入口）默认会从当前工作区查找 `.tools/wechat-article-for-ai`。如果上游工具放在别处，使用 `--tool-dir` 或环境变量 `WECHAT_ARTICLE_FOR_AI_DIR`。
 
 当前来源依赖建议理解成三类：
 
@@ -351,17 +351,6 @@ python scripts/check_deps.py --install --group=format_normalization
 python scripts/check_deps.py --install --group=format_normalization --china
 ```
 
-### PDF 生成（Brief / Deep Research 报告导出）
-
-Brief 和 Deep Research 报告的 PDF 导出功能由 `scripts/md_to_pdf.py` 提供（Playwright + Chrome 渲染），由 `scripts/pipeline/pdf_utils.py` 内部调用。用户无需直接接触该脚本。
-
-| 步骤 | 标准路径 | 中国镜像路径 |
-|------|---------|------------|
-| 安装 Python 包 | `pip install markdown playwright` | `pip install markdown playwright -i https://pypi.tuna.tsinghua.edu.cn/simple` |
-| 安装 Chromium | `playwright install chromium` | `playwright install chromium` |
-
-> **注意**：这里的 `playwright` 是 Python 包（PDF 渲染），与抖音视频浏览器兜底使用的 Node.js `playwright` 是两个独立依赖。
-
 ### 环境变量设置
 
 安装完成后，设置运行时环境变量：
@@ -562,7 +551,7 @@ $env:WECHAT_WIKI_COMPILE_MOCK_FILE = (Resolve-Path "Claude-obsidian-wiki-skill\r
 也可以不用环境变量，直接传：
 
 ```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py `
   --tool-dir ".tools\wechat-article-for-ai" `
   --deps-dir ".python-packages" `
   "https://mp.weixin.qq.com/s/..."
@@ -580,17 +569,17 @@ python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
 例如：
 
 ```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py `
   "D:\notes\sample.md"
 
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py `
   --text "这是直接粘贴进入主入口的文本。"
 ```
 
 如果你要跑 playlist / 合集 / channel videos 页，当前推荐显式使用保护参数，例如：
 
 ```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py `
   --vault "D:\Obsidian\MyVault" `
   --collection-limit 5 `
   --collection-delay-seconds 1 `
@@ -654,7 +643,7 @@ icacls .python-packages /grant "Users:(OI)(CI)M" /T
 脚本默认使用工作区 `.runtime-fetch` 作为暂存目录，避免落到 `%TEMP%`。如仍需指定：
 
 ```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py `
   --work-dir ".runtime-fetch" `
   "https://mp.weixin.qq.com/s/..."
 ```
@@ -664,7 +653,7 @@ python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py `
 使用可见浏览器：
 
 ```powershell
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py --no-headless "https://mp.weixin.qq.com/s/..."
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py --no-headless "https://mp.weixin.qq.com/s/..."
 ```
 
 ### 多个 Obsidian Vault
@@ -676,7 +665,7 @@ python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py --no-headless "h
 ```powershell
 $env:PYTHONPATH = (Resolve-Path ".python-packages").Path
 python .tools\wechat-article-for-ai\main.py --help
-python Claude-obsidian-wiki-skill\scripts\wiki_ingest_wechat.py --help
+python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py --help
 python Claude-obsidian-wiki-skill\scripts\llm_compile_ingest.py --help
 python Claude-obsidian-wiki-skill\scripts\apply_compiled_brief_source.py --help
 python Claude-obsidian-wiki-skill\scripts\export_main_graph.py --vault "D:\Obsidian\MyVault"

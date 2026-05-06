@@ -1,27 +1,42 @@
 """PDF generation utilities for brief and deep research reports.
 
 Wraps md-to-pdf (Playwright + Chrome) to generate PDF from Markdown content.
-md_to_pdf.py lives in scripts/ as an internal module — imported directly.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import re
+import subprocess
+import sys
 from pathlib import Path
 
-# ── Import md_to_pdf from scripts/ (sibling of pipeline/) ──
-_MD_TO_PDF_PATH = Path(__file__).resolve().parent.parent / "md_to_pdf.py"
-_spec = importlib.util.spec_from_file_location("md_to_pdf", _MD_TO_PDF_PATH)
-_md_to_pdf = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_md_to_pdf)
+# Default path to md-to-pdf script — try multiple locations
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_MD_TO_PDF_CANDIDATES = [
+    _SCRIPT_DIR.parent.parent.parent.parent / "Skill" / "md-to-pdf-v1.1" / "scripts" / "md_to_pdf.py",
+    _SCRIPT_DIR.parent.parent.parent.parent.parent / "Skill" / "md-to-pdf-v1.1" / "scripts" / "md_to_pdf.py",
+    _SCRIPT_DIR.parent.parent.parent.parent / "Skill" / "md-to-pdf-v1.0" / "scripts" / "md_to_pdf.py",
+    _SCRIPT_DIR.parent.parent.parent.parent.parent / "Skill" / "md-to-pdf-v1.0" / "scripts" / "md_to_pdf.py",
+]
 
-md_to_html = _md_to_pdf.md_to_html
-html_to_pdf = _md_to_pdf.html_to_pdf
-THEMES = _md_to_pdf.THEMES
 
+def _find_md_to_pdf_script() -> Path | None:
+    """Locate the md_to_pdf.py script. Check candidate paths, then PATH."""
+    for candidate in _MD_TO_PDF_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    # Fallback: check if md_to_pdf is on PATH
+    try:
+        result = subprocess.run(
+            ["python", "-c", "import importlib; importlib.import_module('md_to_pdf')"],
+            capture_output=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return None  # Module importable, use python -m
+    except Exception:
+        pass
+    return None
 
-# ── Obsidian syntax preprocessing ────────────────────────────
 
 def clean_wikilinks(md_text: str) -> str:
     """Convert Obsidian [[wikilinks]] to plain text for PDF rendering.
@@ -82,8 +97,6 @@ def clean_obsidian_syntax(md_text: str) -> str:
     return md_text
 
 
-# ── PDF generation ────────────────────────────────────────────
-
 def generate_pdf(
     md_path: Path,
     pdf_path: Path,
@@ -91,7 +104,7 @@ def generate_pdf(
     theme: str = "academic",
     no_cover: bool = False,
 ) -> Path | None:
-    """Generate PDF from a Markdown file using md-to-pdf (direct call).
+    """Generate PDF from a Markdown file using md-to-pdf.
 
     Args:
         md_path: Input Markdown file path.
@@ -103,25 +116,37 @@ def generate_pdf(
     Returns:
         Path to generated PDF, or None if generation failed.
     """
+    script = _find_md_to_pdf_script()
+    if script is None:
+        return None
+
+    cmd = [
+        sys.executable, str(script),
+        str(md_path), str(pdf_path),
+        "--theme", theme,
+    ]
+    if title:
+        cmd.extend(["--title", title])
+    if no_cover:
+        cmd.append("--no-cover")
+
     try:
-        md_text = md_path.read_text(encoding="utf-8")
-        html_content = md_to_html(md_text, title=title, theme=theme, no_cover=no_cover)
-
-        # Save intermediate HTML for debugging
-        html_path = pdf_path.with_suffix(".html")
-        html_path.write_text(html_content, encoding="utf-8")
-
-        html_to_pdf(html_content, str(pdf_path))
-        return pdf_path if pdf_path.exists() else None
-    except Exception:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and pdf_path.exists():
+            return pdf_path
+        return None
+    except (subprocess.TimeoutExpired, OSError):
         return None
 
 
-def _page_to_pdf(md_path: Path, title: str) -> Path | None:
-    """Shared helper for brief and report PDF generation.
+def brief_to_pdf(md_path: Path, title: str = "") -> Path | None:
+    """Generate PDF for a brief page.
 
-    Reads markdown, cleans Obsidian syntax, writes temp file, generates PDF,
-    then cleans up temp files.
+    Reads the brief markdown, cleans Obsidian syntax (including frontmatter),
+    writes a temp cleaned version, then calls md-to-pdf with cover page.
+    Title format: "{原题目} - 简报"
     """
     if not md_path.exists():
         return None
@@ -135,23 +160,12 @@ def _page_to_pdf(md_path: Path, title: str) -> Path | None:
 
     pdf_path = md_path.with_suffix(".pdf")
     try:
-        return generate_pdf(temp_md, pdf_path, title=title, no_cover=False)
+        result = generate_pdf(temp_md, pdf_path, title=title, no_cover=False)
+        return result
     finally:
-        # Clean up temp files
+        # Clean up temp file
         if temp_md.exists():
             temp_md.unlink()
-        temp_html = temp_md.with_suffix(".html")
-        if temp_html.exists():
-            temp_html.unlink()
-
-
-def brief_to_pdf(md_path: Path, title: str = "") -> Path | None:
-    """Generate PDF for a brief page.
-
-    Reads the brief markdown, cleans Obsidian syntax (including frontmatter),
-    writes a temp cleaned version, then calls md-to-pdf with cover page.
-    """
-    return _page_to_pdf(md_path, title)
 
 
 def report_to_pdf(md_path: Path, title: str = "") -> Path | None:
@@ -160,4 +174,19 @@ def report_to_pdf(md_path: Path, title: str = "") -> Path | None:
     Reads the report markdown, cleans Obsidian syntax, writes a temp
     cleaned version, then calls md-to-pdf with cover page.
     """
-    return _page_to_pdf(md_path, title)
+    if not md_path.exists():
+        return None
+
+    md_text = md_path.read_text(encoding="utf-8")
+    cleaned = clean_obsidian_syntax(md_text)
+
+    temp_md = md_path.with_suffix(".pdf-ready.md")
+    temp_md.write_text(cleaned, encoding="utf-8")
+
+    pdf_path = md_path.with_suffix(".pdf")
+    try:
+        result = generate_pdf(temp_md, pdf_path, title=title, no_cover=False)
+        return result
+    finally:
+        if temp_md.exists():
+            temp_md.unlink()

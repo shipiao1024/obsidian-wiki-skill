@@ -105,8 +105,6 @@ python scripts/apply_compiled_brief_source.py `
 ```
 
 如果需要更精细的 payload 控制，在步骤 1 和 2 之间插入：
-
-> **PDF 自动生成**：apply 完成后，`ingest_orchestrator` 自动调用 `pdf_utils.brief_to_pdf()` 为 brief 生成带封面的 PDF（`wiki/briefs/{slug}.pdf`）。PDF 生成失败时静默跳过，不影响入库主流程。排版规格和主题选择见 `references/pdf-output.md`。
 ```powershell
 python scripts/llm_compile_ingest.py `
   --vault "D:\Vault" `

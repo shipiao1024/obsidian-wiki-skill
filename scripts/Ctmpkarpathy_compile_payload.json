@@ -1,0 +1,125 @@
+{
+  "mode": "agent-interactive-compile-v2",
+  "metadata": {
+    "title": "Karpathy 的知识库方案很好，但它不是为你设计的",
+    "author": "",
+    "date": "",
+    "source_url": "",
+    "slug": "2026-04-12--Karpathy 的知识库方案很好，但它不是为你设计的",
+    "vault": "D:\\Wiki\\ObsidianVault",
+    "raw": "D:\\Wiki\\ObsidianVault\\raw\\articles\\2026-04-12--Karpathy 的知识库方案很好，但它不是为你设计的.md"
+  },
+  "context": {
+    "related_domains": {
+      "AI 工程": {
+        "domain_page": "AI 工程 概览 待随着更多来源持续演化。 来源 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/车载MCU边缘AI深度研究报告 sources/2026 04 14 EEA 之AI 定义汽车 I 从分工到取消分工—AIDV 对 EEA 的第一次冲击 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/这才是学习的底层原理！平民逆袭，精英哭泣【认知科学&知识焦虑乱谈】 sources/2026 04 17 从 E2E 到 Foundation Model：AI 定义汽车的最后一程 sources/2026 04 11 软件定义汽车系列 II SOA、OTA 和算力留白：SDV 三笔绕不开的账 sources/2026 03 09 LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 sources/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 sources/2026 04 11 软件定义汽",
+        "synthesis_page": "AI 工程 综合分析 当前结论 从全景视角讲了 E/E 架构的演进史——从分布式到域集中到区域式，以及 SDV、AIDV 各自在这条线上的位置。 接下来这个\"软件定义汽车\"系列（上/中/下三篇），把 SDV 的工程内幕拆开来看。 本篇（上）从 HDV 的工程逻辑讲起，看清旧架构的合理性和它崩塌的临界点，再拆解 SDV 工程账单的前两笔——中央计算平台和硬件抽象层。 近期来源 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/车载MCU边缘AI深度研究报告 sources/2026 04 14 EEA 之AI 定义汽车 I 从分工到取消分工—AIDV 对 EEA 的第一次冲击 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/这才是学习的底层原理！平民逆袭，精英哭泣【认知科学&知识焦虑乱谈】 sources/2026 04 17 从 E2E 到 Foundation Model：AI 定义汽车的最后一程 sources/2026 04 11 软件定义汽车系列 II SOA、OTA 和算力留白：SDV 三笔绕不开的账 sources/2026 03 09 LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 sources/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 sources/2026 04 11 软件定义汽车系列 I 从 HDV 到 SDV：为什么整辆车必须重建 sources/2026 04 12 Karpathy 的知识库方案很好，但它不是为你设计的 相关概念 待补充。 后续维护 新来源进入该主题域时，补充对比、冲突和演化判断。"
+      },
+      "商业分析": {
+        "domain_page": "商业分析 概览 待随着更多来源持续演化。 来源 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/车载MCU边缘AI深度研究报告 sources/2026 04 12 软件定义汽车系列 III 谁在真正做 SDV，谁在被 SDV 做 sources/给未来孩子的信：不要围观他人的生活 汤质看本质 资本与少年 终 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/这才是学习的底层原理！平民逆袭，精英哭泣【认知科学&知识焦虑乱谈】 sources/2026 04 17 从 E2E 到 Foundation Model：AI 定义汽车的最后一程 sources/2026 04 11 软件定义汽车系列 II SOA、OTA 和算力留白：SDV 三笔绕不开的账 sources/2026 03 09 LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 sources/2026 04 20 EEA 架构变了三代，Gateway 一直在翻译 sources/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 sources",
+        "synthesis_page": "商业分析 综合分析 当前结论 从全景视角讲了 E/E 架构的演进史——从分布式到域集中到区域式，以及 SDV、AIDV 各自在这条线上的位置。 接下来这个\"软件定义汽车\"系列（上/中/下三篇），把 SDV 的工程内幕拆开来看。 本篇（上）从 HDV 的工程逻辑讲起，看清旧架构的合理性和它崩塌的临界点，再拆解 SDV 工程账单的前两笔——中央计算平台和硬件抽象层。 近期来源 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/车载MCU边缘AI深度研究报告 sources/2026 04 12 软件定义汽车系列 III 谁在真正做 SDV，谁在被 SDV 做 sources/给未来孩子的信：不要围观他人的生活 汤质看本质 资本与少年 终 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/这才是学习的底层原理！平民逆袭，精英哭泣【认知科学&知识焦虑乱谈】 sources/2026 04 17 从 E2E 到 Foundation Model：AI 定义汽车的最后一程 sources/2026 04 11 软件定义汽车系列 II SOA、OTA 和算力留白：SDV 三笔绕不开的账 sources/2026 03 09 LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 sources/2026 04 20 EEA 架构变了三代，Gateway 一直在翻译 sources/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 sources/2026 04 11 软件定义汽车系列 I 从 HDV 到 SDV：为什么整辆车必须重建 sources/2026 04 12 Karpathy 的知识库方案很好，但它不是为你设计的 相关概念 待补充。 后续维护 新来源进入该主题域时，补充对比、冲突和演化判断。"
+      }
+    },
+    "detected_domains": [
+      "AI 工程",
+      "商业分析"
+    ],
+    "purpose": "---\ntitle: \"知识库目的声明\"\ntype: \"system-config\"\n---\n\n# 知识库目的声明\n\n## 核心问题\n\n- （请填写你的核心研究问题）\n\n## 关注领域\n\n- 自动驾驶\n- AI工程\n- 商业分析\n- 机器人\n\n## 排除范围\n\n- 认知科学\n- 学习方法论\n- 社会批判\n- 纯人文社科",
+    "related_sources": [
+      {
+        "path": "wiki\\sources\\2026-04-03--Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库.md",
+        "title": "2026-04-03--Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库",
+        "excerpt": "Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 来源信息 作者：AI寒武纪 日期：2026 04 03 12:10:55 原始链接：https://mp.weixin.qq.com/s? biz=Mzg3MTkxMjYzOA==&mid=2247513861&idx=1&sn=59fe0da79f6b7865f6bcd8d30f4dfc61&chksm=cf888b210653bac80ec4046ce5fe261ff66c3292598cc8b1a9b8c6216056d27609b22a85d85d&from=industrynews&version=4.1.6.6017&platform=win#rd 原文页：raw/articles/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 快读页：briefs/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 核心摘要 Karpathy 提出了一套用 LLM 编译原始资料为持久 Wiki 的个人知识管理工作流，核"
+      },
+      {
+        "path": "wiki\\sources\\2026-04-05--LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」.md",
+        "title": "2026-04-05--LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」",
+        "excerpt": "LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 来源信息 作者：AI寒武纪 日期：2026 04 05 02:12:40 原始链接：https://mp.weixin.qq.com/s? biz=Mzg3MTkxMjYzOA==&mid=2247513874&idx=1&sn=75d8101e2df06ef1abdde76e82685691&chksm=cf07067763c1d29a7fd062f99b0cb27c3d1f2e4982c15ba4446172ea6aa7277fe54103934c23&from=industrynews&version=4.1.6.6017&platform=win#rd 原文页：raw/articles/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 快读页：briefs/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 核心摘要 本文是对 Karpathy 公开的 LLM Wiki 详细方法（gist）的"
+      },
+      {
+        "path": "wiki\\sources\\2026-03-09--LiteVLA-Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑.md",
+        "title": "2026-03-09--LiteVLA-Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑",
+        "excerpt": "LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 来源信息 作者：GPUS开发者 日期：2026 03 09 09:00:51 原始链接：https://mp.weixin.qq.com/s? biz=MjM5NTE3Nzk4MQ==&mid=2651249328&idx=1&sn=4b19e6ae0187bda4e9e806aaa093f0b4&chksm=bcb9220ee363105858b0a50b157d72a2d2f61ca7334958a1cc6a152446e04d6d27fbe36f1b33 原文页：raw/articles/2026 03 09 LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 快读页：briefs/2026 03 09 LiteVLA Edge：让 Jetson AGX Orin 成为嵌入式机器人的实时智能大脑 核心摘要 LiteVLA Edge解决了机器人核心痛点：让大脑真正装在自己身上，本地低延迟完成感知 决策 执行闭环 Jetson AGX Orin作为部"
+      },
+      {
+        "path": "wiki\\sources\\2026-04-20--EEA 架构变了三代，Gateway 一直在翻译.md",
+        "title": "2026-04-20--EEA 架构变了三代，Gateway 一直在翻译",
+        "excerpt": "EEA 架构变了三代，Gateway 一直在翻译 来源信息 作者：机器人不喝咖啡 日期：2026 04 20 16:56:34 原始链接：https://mp.weixin.qq.com/s? biz=MzYzOTgzMDYwNQ==&mid=2247483977&idx=1&sn=2fd97ed5ebb69a07472b27338c72091a&chksm=f0cddd6bc7ba547d7b03fc0dd80ca783366c23fb98d3443aa5ed6d4d3553496070596204adc7 原文页：raw/articles/2026 04 20 EEA 架构变了三代，Gateway 一直在翻译 快读页：briefs/2026 04 20 EEA 架构变了三代，Gateway 一直在翻译 核心摘要 分布式时代Gateway：翻译不同CAN总线速率(1Mbps/500kbps)和协议，实现跨网段信号路由 域集中时代Gateway：域间路由+安全过滤+防火墙，DMZ架构隔离ADAS域和座舱域 区域式时代Gateway：TSN流量整形+确定性调度+V2X协议转换，从简单路由"
+      },
+      {
+        "path": "wiki\\sources\\2026-03-24--陶哲轩：AI 已经把想法成本降到几乎为0了.md",
+        "title": "2026-03-24--陶哲轩：AI 已经把想法成本降到几乎为0了",
+        "excerpt": "陶哲轩：AI 已经把想法成本降到几乎为0了... 来源信息 作者：AI寒武纪 日期：2026 03 24 14:43:41 原始链接：https://mp.weixin.qq.com/s? biz=Mzg3MTkxMjYzOA==&mid=2247513603&idx=1&sn=725c5a72c64110562928587f1b1a1159&chksm=cf62498a93d034baf60e2c8fc897c8ea977410de3f68e987522222559b5fc6aae18ed5a318e1&from=industrynews&version=4.1.6.6017&platform=win#rd 原文页：raw/articles/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 快读页：briefs/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 核心摘要 陶哲轩在与 Dwarkesh Patel 的长篇对谈中，以开普勒发现行星运动定律为类比起点，系统阐述了 AI 对数学和科学的影响 核心论断：AI 已将想法生成成本降至近乎零（类比互联网"
+      }
+    ],
+    "related_concepts": [
+      {
+        "path": "wiki\\concepts\\用大模型.md",
+        "title": "用大模型",
+        "excerpt": "用大模型 定义 待后续 query / lint / 人工复核补充定义。 来自来源 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 相关实体 待补充。 相关主题域 domains/AI 工程"
+      },
+      {
+        "path": "wiki\\concepts\\神经网络.md",
+        "title": "神经网络",
+        "excerpt": "神经网络 定义 待后续 query / lint / 人工复核补充定义。 来自来源 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 sources/车载MCU边缘AI深度研究报告 sources/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 sources/2026 04 14 EEA 之AI 定义汽车 I 从分工到取消分工—AIDV 对 EEA 的第一次冲击 sources/2026 04 17 从 E2E 到 Foundation Model：AI 定义汽车的最后一程 sources/2026 04 11 软件定义汽车系列 II SOA、OTA 和算力留白：SDV 三笔绕不开的账 sources/2026 04 12 软件定义汽车系列 III 谁在真正做 SDV，谁在被 SDV 做 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 相关实体 待补充。 相关主题域 domains/自动驾驶 domains/AI 工程"
+      }
+    ],
+    "related_entities": [
+      {
+        "path": "wiki\\entities\\Karpathy.md",
+        "title": "Karpathy",
+        "excerpt": "Karpathy 类型 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。 来自来源 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 sources/2026 04 12 Karpathy 的知识库方案很好，但它不是为你设计的 相关概念 待补充。 相关主题域 domains/AI 工程 domains/商业分析 domains/认知科学"
+      },
+      {
+        "path": "wiki\\entities\\Obsidian.md",
+        "title": "Obsidian",
+        "excerpt": "Obsidian 类型 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。 来自来源 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/2026 04 12 Karpathy 的知识库方案很好，但它不是为你设计的 相关概念 待补充。 相关主题域 domains/AI 工程 domains/商业分析 domains/认知科学"
+      },
+      {
+        "path": "wiki\\entities\\Wiki.md",
+        "title": "Wiki",
+        "excerpt": "Wiki 类型 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。 来自来源 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/2026 04 12 Karpathy 的知识库方案很好，但它不是为你设计的 相关概念 待补充。 相关主题域 domains/AI 工程 domains/商业分析 domains/认知科学"
+      },
+      {
+        "path": "wiki\\entities\\Schema.md",
+        "title": "Schema",
+        "excerpt": "Schema 类型 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。 来自来源 sources/2026 04 12 Karpathy 的知识库方案很好，但它不是为你设计的 相关概念 待补充。 相关主题域 domains/AI 工程 domains/商业分析 domains/认知科学"
+      },
+      {
+        "path": "wiki\\entities\\RAG.md",
+        "title": "RAG",
+        "excerpt": "RAG 类型 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。 来自来源 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/2026 04 03 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 相关概念 待补充。 相关主题域 domains/AI 工程"
+      }
+    ],
+    "related_syntheses": [
+      {
+        "path": "wiki\\syntheses\\认知科学--综合分析.md",
+        "title": "认知科学--综合分析",
+        "excerpt": "认知科学 综合分析 当前结论 阅读之前记得关注+星标⭐️，😄，每天才能第一时间接收到更新 前两天我写文章介绍了Andrej Karpathy构建个人本地知识库的工作流方法，目前这个思路已经火爆全网 Karpathy最新硬核分享：用大模型和Obsidian打造个人本地知识库 不过有朋友抱怨AK是在炫技，没有操作性，不够具体，这不详细版本来了。 AK刚刚又公开了构建个人本地知识库详细版本，使得这个方法有了更强的落地性和可操作性，原文以md文件分享，这相当于把提示词公布了，地址： gist.github.com/karpathy/442a6bf555914893e9891c11519de94f 使用 LLM 构建个人知识库的模式。 这是一个想法文件，旨在让你直接复制粘贴到自己的 Agent（例如 Codex、Claude Code、OpenCode / Pi 或其他）。 近期来源 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/车载MCU边缘AI深度研究报告 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知"
+      },
+      {
+        "path": "wiki\\syntheses\\AI 与科学研究--综合分析.md",
+        "title": "AI 与科学研究--综合分析",
+        "excerpt": "AI 与科学研究 综合分析 当前结论 raw/assets/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了/img 001.jpg]] ↑阅读之前记得关注+星标⭐️，😄，每天才能第一时间接收到更新 AI 已经把想法生成的成本降到了几乎为零——就像互联网把通信成本降到了几乎为零一样。 AI 最擅长的那件事，恰恰不再是科学的瓶颈了。 这是陶哲轩在使用了一年AI后的最新观点。 近期来源 sources/2026 03 24 陶哲轩：AI 已经把想法成本降到几乎为0了 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ 相关概念 concepts/神经网络 concepts/预测 后续维护 新来源进入该主题域时，补充对比、冲突和演化判断。"
+      },
+      {
+        "path": "wiki\\syntheses\\AI 工程--综合分析.md",
+        "title": "AI 工程--综合分析",
+        "excerpt": "AI 工程 综合分析 当前结论 从全景视角讲了 E/E 架构的演进史——从分布式到域集中到区域式，以及 SDV、AIDV 各自在这条线上的位置。 接下来这个\"软件定义汽车\"系列（上/中/下三篇），把 SDV 的工程内幕拆开来看。 本篇（上）从 HDV 的工程逻辑讲起，看清旧架构的合理性和它崩塌的临界点，再拆解 SDV 工程账单的前两笔——中央计算平台和硬件抽象层。 近期来源 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/车载MCU边缘AI深度研究报告 sources/2026 04 14 EEA 之AI 定义汽车 I 从分工到取消分工—AIDV 对 EEA 的第一次冲击 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/这才是学习的底层原理！平民逆袭，精英哭泣【认知科学&知识焦虑乱谈】 sources/2026 04 17 从 E2E 到 Foundation"
+      },
+      {
+        "path": "wiki\\syntheses\\商业分析--综合分析.md",
+        "title": "商业分析--综合分析",
+        "excerpt": "商业分析 综合分析 当前结论 从全景视角讲了 E/E 架构的演进史——从分布式到域集中到区域式，以及 SDV、AIDV 各自在这条线上的位置。 接下来这个\"软件定义汽车\"系列（上/中/下三篇），把 SDV 的工程内幕拆开来看。 本篇（上）从 HDV 的工程逻辑讲起，看清旧架构的合理性和它崩塌的临界点，再拆解 SDV 工程账单的前两笔——中央计算平台和硬件抽象层。 近期来源 sources/2026 04 17 车里塞进一个数据中心——AIDV 对 EEA 的第二次冲击 sources/2026 04 05 LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」 sources/车载MCU边缘AI深度研究报告 sources/2026 04 12 软件定义汽车系列 III 谁在真正做 SDV，谁在被 SDV 做 sources/给未来孩子的信：不要围观他人的生活 汤质看本质 资本与少年 终 sources/2026 04 24 独家对话罗福莉：AI范式已然巨变！ sources/这才是学习的底层原理！平民逆袭，精英哭泣【认知科学&知识焦虑乱谈】 sources/"
+      }
+    ],
+    "pending_deltas": [
+      {
+        "path": "wiki\\outputs\\delta-2026-04-05--LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」-source.md",
+        "title": "delta-2026-04-05--LLM wiki：karpathy 公开构建个人本地知识库详细方法「超强提示词」-source",
+        "excerpt": "Delta Proposal 目标页面 unknown 动作 suggest update 原因 当前综合分析页内容被早期启发式填充占据（含公众号关注提示等噪声），本文提供了 Karpathy 方法论的详细解读，应更新为更精确的知识管理方法论综合内容 置信度 low 证据 待人工补充证据。 关键判断 [normative claim high] Wiki 作为复利式知识资产从根本上优于 RAG 的单次检索模式 [empirical observation medium] 中等规模下 index.md + log.md 双文件导航足够，无需向量检索 [causal claim high] LLM 将 Wiki 维护成本降至近零，解决了传统 Wiki 因维护成本荒废的根本问题 [empirical observation medium] 一份资料录入可能涉及 10 15 个 Wiki 页面的更新 [interpretive claim high] LLM Wiki 继承了 Bush 的 Memex 愿景，LLM 补上了'谁来维护'这一环 建议修改 待人工补充草稿内容。"
+      }
+    ]
+  },
+  "expected_output_schema_version": "2.0"
+}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .types import Article, DOMAIN_EXCLUDE_LINES
+from .pipeline_types import Article, DOMAIN_EXCLUDE_LINES
 
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|\r\n]+')
 FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.S)

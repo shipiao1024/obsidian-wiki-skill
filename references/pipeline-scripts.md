@@ -56,10 +56,6 @@ How to position this script:
 
 Use `--input-dir` to reprocess an existing upstream output without fetching again.
 
-## wiki_ingest_wechat.py
-
-Legacy shim that forwards to `wiki_ingest.py`. Retained for backward compatibility. The primary entrypoint is now `wiki_ingest.py`.
-
 ## llm_compile_ingest.py
 
 Compile entrypoint:

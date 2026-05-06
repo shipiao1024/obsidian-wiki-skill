@@ -29,7 +29,9 @@ python scripts/apply_compiled_brief_source.py `
   --vault "D:\Vault" `
   --compiled-json "result.json"
 
-# 5. PDF 自动生成（apply 完成后由 ingest_orchestrator 内部调用，无需手动触发）
+# 5. 生成 PDF（入库后 LLM 应主动调用 md-to-pdf）
+# brief PDF 会自动生成。如需手动重新生成：
+# python D:\AI\Skill\md-to-pdf-v1.0\scripts\md_to_pdf.py <brief.md> <brief.pdf> --title "标题 - 简报"
 ```
 
 ---

@@ -1,7 +1,5 @@
 # Obsidian Wiki Skill
 
-[English](README.en.md) | [简体中文](README.md)
-
 **Compile external knowledge into Obsidian, building a searchable, reasonable, evolvable personal knowledge operating system.**
 
 Not one-off summarization — sediment everything you read into two layers:
@@ -15,9 +13,6 @@ Driven by Claude Code conversations, Python scripts handle the filesystem, Obsid
 
 Design philosophy references [Karpathy's llm-wiki methodology](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): ingest is compilation not archiving, LLM compiles raw material into a persistent Wiki, prefer links over duplication, knowledge value lies in being accumulative, relatable, and evolvable.
 
-> **Product Overview**: [docs/product-overview.html](docs/product-overview.html)  
-> Open it in a browser for the visual architecture, workflow stages, and capability overview.
-
 ---
 
 ## Why Build This
@@ -29,7 +24,7 @@ This skill tries to reverse that direction — after each ingest, the knowledge 
 - Automatically detects this article's **impact on your existing stances** (reinforce / contradict / extend)
 - Automatically associates content with **existing open questions** (open question advances → partial → resolved)
 - Converts to **directly usable output** via natural-language query — just ask, the system auto-routes to the best format (briefing / meeting materials / article drafts / rebuttal materials)
-- Supports **reasoning-driven 8-phase deep research** with horizontal-vertical analysis, online verification, structured reports with evidence labels
+- Supports 9-phase **hypothesis-driven deep research**, online verification, structured reports with evidence labels
 - Displays an **impact report** after ingest: cross-domain insights, open questions, stance impacts — not just "write complete"
 - **PDF output**: Brief and deep research reports auto-generated as PDF, one-click reading
 
@@ -63,7 +58,7 @@ wiki/
   questions/    ← Question tracking (open → partial → resolved → dropped)
   stances/      ← Stance pages (my current judgment on X + evidence)
   comparisons/  ← Structured comparisons (A vs B: dimensions + pros/cons + overall judgment)
-  research/     ← Deep research reports + PDF (longitudinal/cross-sectional/insight structure)
+  research/     ← Deep research reports + PDF (Why/What/How/Trace structure)
   outputs/      ← Temporary work products (graph-hidden, don't pollute main knowledge layer)
 ```
 
@@ -81,7 +76,7 @@ Users ask in plain language — LLM understands intent, searches vault, synthesi
 User: "What is BEV perception?"                    → Quick answer: 3-5 key points + sources
 User: "Prep me for a meeting on end-to-end driving" → Briefing: key points + counter-signals + discussion questions
 User: "Compare BEV vs pure vision"                  → Comparison table + key differences
-User: "Deep research on end-to-end feasibility"     → Reasoning-driven 8-phase + horizontal-vertical analysis
+User: "Deep research on end-to-end feasibility"     → 9-phase hypothesis-driven protocol
 ```
 
 Query flow: read index → Grep search → read top pages → synthesize answer → optional write to outputs/. Scripts handle only mechanical operations (index rebuild, result writeback).
@@ -98,23 +93,25 @@ Graph noise reduction convention: `raw/articles/`, `sources/`, `briefs/`, `outpu
 
 ### 🔬 Deep Research
 
-Reasoning-driven 8-phase research protocol: LLM reasons first, web research extends, vault supplements. Horizontal-vertical analysis: longitudinal (origin→evolution→decision logic→phase division) + cross-sectional (competitor comparison→ecological niche→trend judgment). 5 quality gates auto-validate, results appended as appendix. Reports auto-generated as PDF, stored in `wiki/research/`.
+Hypothesis-driven 9-phase research protocol, combining vault's existing knowledge with online search, producing structured reports with evidence labels (Why/What/How/Trace). Phase 9.5 auto-executes 7 red-line quality gate + dependency chain audit, results appended as appendix. Reports auto-generated as PDF, stored in `wiki/research/`.
 
 **Trigger words**: `deep research X` / `深入研究 X` / `系统分析 X`
 
 ```
-Phase 0: Activation + object identification
+Phase 0: Context collection (hot.md + existing stances/questions)
 Phase 1: Intent expansion (uncover the real question)
-Phase 2: Hypothesis formation (1-2 falsifiable hypotheses)
-Phase 3: Web research (longitudinal + cross-sectional lines, parallel)
-Phase 4: Longitudinal analysis (diachronic: origin→evolution→decision logic)
-Phase 5: Cross-sectional analysis (synchronic: competitor comparison)
-Phase 6: Cross-axis insight + three-scenario projection
-Phase 7: Vault supplementary verification
-Phase 8: Report + 5 quality gates + PDF
+Phase 2: Hypothesis formation (2-4 falsifiable hypotheses)
+Phase 3: Vault evidence classification (F/I/A nodes)
+Phase 4: Online research (adaptive rounds, evidence sufficiency gating)
+Phase 5: External fact calibration
+Phase 6: Root question excavation
+Phase 7: Scenario stress testing
+Phase 8: Pre-mortem (failure mode analysis)
+Phase 9: Convergence + Why/What/How/Trace report
+Phase 9.5: Quality gate (7 red-line tests + dependency chain audit + PDF)
 ```
 
-All assertions carry evidence labels: `[Fact]` / `[Inference]` / `[Assumption]` / `[Hypothesis]` / `[Disputed]` / `[Gap]`
+All assertions carry evidence labels: `[Fact]` / `[Inference]` / `[Assumption]` / `[Hypothesis X%]` / `[Disputed]` / `[Gap]`
 
 ### 🔄 Post-Ingest Impact Report
 
@@ -145,7 +142,7 @@ python scripts/check_deps.py --install --china
 
 Dependency groups: `core` / `wechat` / `video` / `video_asr` / `pdf` / `web`
 
-WeChat fetching depends on [wechat-article-for-ai](https://github.com/bzd6661/wechat-article-for-ai) (Camoufox anti-detection browser). The GitHub release package does not bundle that upstream repository; install it into `.tools/wechat-article-for-ai` or point `KWIKI_WECHAT_TOOL_DIR` at your existing clone.
+WeChat fetching depends on [wechat-article-for-ai](https://github.com/bzd6661/wechat-article-for-ai) (Camoufox anti-detection browser).
 
 ### 2. Initialize Vault
 
@@ -227,9 +224,9 @@ obsidian-wiki-skill/
   references/           ← On-demand behavior guides (SKILL.md routes to the right one)
     ingest-guide.md     ← Ingest behavior guide (5-stage pipeline + compile strategy)
     query-guide.md      ← Query behavior guide (search + synthesize + 9 output formats)
-    research-guide.md   ← Deep research behavior guide (reasoning-driven 8-phase + horizontal-vertical analysis)
+    research-guide.md   ← Deep research behavior guide (9-phase protocol overview)
     maintenance-guide.md ← Maintenance behavior guide (lint / review / archive / graph)
-    deep-research-protocol.md ← Reasoning-driven 8-phase protocol + horizontal-vertical analysis
+    deep-research-protocol.md ← 9-phase protocol details
     interaction.md      ← User dialog routing + post-ingest guidance template
     workflow.md         ← Pipeline + vault structure + page status lifecycle
     ...
@@ -306,11 +303,21 @@ Full env var list in [references/setup.md](references/setup.md).
 
 | Problem | Troubleshooting |
 |---------|----------------|
-| WeChat URL failure | Install `wechat-article-for-ai` into `.tools\wechat-article-for-ai` or set `KWIKI_WECHAT_TOOL_DIR` |
+| WeChat URL failure | Check `.tools\wechat-article-for-ai` exists, `KWIKI_WECHAT_TOOL_DIR` is set |
 | Web URL failure | Check `baoyu-url-to-markdown` is on PATH, classify as `browser_not_ready` or `network_failed` |
 | Bilibili HTTP 412 | Login state issue, check `cookies.txt` |
 | Repeated collection failures | Check `wiki/import-jobs/*.md` for `cooldown_until` |
 | v2 JSON apply error | Check top-level `"version": "2.0"` exists, `core_summary` is a list |
+
+---
+
+## Tests
+
+```powershell
+python -m pytest tests/ -q
+```
+
+274 tests passing. Coverage: source adapters, pipeline core, page builders, validation gate, risk approval, atomic cards, deep research triggers, spaced repetition, graph layers, format normalization routing.
 
 ---
 
@@ -325,9 +332,9 @@ Full env var list in [references/setup.md](references/setup.md).
 | [references/interaction.md](references/interaction.md) | User dialog routing, post-ingest guidance template, status vocabulary |
 | [references/ingest-guide.md](references/ingest-guide.md) | Ingest behavior guide (5-stage pipeline + compile strategy) |
 | [references/query-guide.md](references/query-guide.md) | Query behavior guide (search + synthesize + 9 output formats) |
-| [references/research-guide.md](references/research-guide.md) | Deep research behavior guide (reasoning-driven 8-phase + horizontal-vertical analysis) |
+| [references/research-guide.md](references/research-guide.md) | Deep research behavior guide (9-phase protocol overview) |
 | [references/maintenance-guide.md](references/maintenance-guide.md) | Maintenance behavior guide (lint / review / archive / graph) |
-| [references/deep-research-protocol.md](references/deep-research-protocol.md) | Reasoning-driven 8-phase protocol + horizontal-vertical analysis |
+| [references/deep-research-protocol.md](references/deep-research-protocol.md) | 9-phase deep research protocol details |
 | [references/stance-schema.md](references/stance-schema.md) | Stance page template & state machine |
 | [references/question-schema.md](references/question-schema.md) | Question tracking template |
 | [references/video-rules.md](references/video-rules.md) | Video processing & collection protection rules |
