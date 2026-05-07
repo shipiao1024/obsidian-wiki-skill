@@ -1,5 +1,7 @@
 # Obsidian Wiki Skill
 
+[English](README.en.md) | [简体中文](README.md)
+
 **A knowledge system that grows with your intent.**
 
 You say why you care; the system organizes knowledge around intent. New domains emerge from content; the system senses and proposes. Query one vault; it automatically bridges insights from others.
