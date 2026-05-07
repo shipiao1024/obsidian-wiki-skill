@@ -126,30 +126,49 @@ python Claude-obsidian-wiki-skill\scripts\wiki_ingest.py `
 
 ### purpose.md 域路由配置
 
-每个 vault 可以在根目录放一个 `purpose.md`，声明该 vault 的关注领域和排除范围。`resolve_vault(article_domains=...)` 会匹配文章域与各 vault 的关注领域，选择重叠度最高的 vault。
+每个 vault 可以在根目录放一个 `purpose.md`，声明该 vault 的价值锚点、关注领域和排除范围。`resolve_vault(article_domains=...)` 会匹配文章域与各 vault 的价值锚点和关注领域，选择匹配度最高的 vault。
 
-`purpose.md` 格式：
+`purpose.md` 格式（V2.1+）：
 
 ```markdown
 ---
-type: "purpose"
+title: "知识库目的声明"
+type: "system-config"
 ---
 
-# Vault 用途
+# 知识库目的声明
+
+## 核心问题
+- 最想搞清楚什么？（填写你的核心研究问题）
+
+## 价值锚点
+
+### 理解学习的底层机制
+> 为什么关注这个？想搞清楚什么本质问题？
+关联领域: 认知科学, 学习方法论
+- 具体想回答的问题或想验证的假设
 
 ## 关注领域
-- 自动驾驶
-- 机器人
-- 端到端学习
+- 认知科学, 学习方法论
 
 ## 排除范围
-- 金融投资
-- 娱乐
+- 自动驾驶, AI工程
 ```
 
-- `## 关注领域` 下的条目用于域匹配：文章的 `detect_domains()` 结果与这些条目做子串双向匹配
-- `## 排除范围` 下的条目当前仅作文档用途，不参与路由决策
+- `## 价值锚点` 下的每个 `### 子段` 是一个意图锚点：包含标题、`>` 意图陈述、`关联领域:` 和具体问题。价值锚点表达"为什么关注"，不是"关注什么"
+- `## 关注领域` 下的条目用于域匹配：文章的 compile 产出 domain 与这些条目做子串双向匹配（1x 权重）。价值锚点的 `关联领域` 也参与匹配（2x 权重）
+- `## 排除范围` 下的条目用于排除过滤：入库时匹配到排除范围的来源不创建分类法页面（concept/entity/domain）
+- 旧格式（无 `## 价值锚点`）仍然完全兼容——`parse_purpose_md()` 自动检测格式并返回对应结构
 - 如果某个 vault 没有 `purpose.md`，该 vault 不参与域路由（但仍是 default vault 候选）
+
+### Domain Proposal 机制（V2.1）
+
+入库时 compile 产出的 domain 如不匹配任何价值锚点或关注领域，自动累积到 `wiki/domain-proposals.json`。同一 domain 累积 ≥3 个来源后，入库影响报告显示"新领域提案"：
+
+- 用户可选择"添加为新价值锚点"——LLM 生成 VP 定义，更新 purpose.md
+- 用户可选择"归入现有价值锚点"——将 domain 添加到已有 VP 的关联领域
+- 用户可选择"归入排除范围"——domain 加入排除列表
+- 用户可选择"暂不处理"——下次入库同 domain 时再次提醒
 
 ### 注册新 Vault
 

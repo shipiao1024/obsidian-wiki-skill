@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .pipeline_types import Article
 from .text_utils import top_lines, brief_lead, section_excerpt, plain_text, parse_frontmatter
+from .structure_fix import fix_structure
 from .extractors import (
     concept_slug,
     comparison_slug,
@@ -412,7 +413,9 @@ def build_brief_page_from_compile(
                 concept = insight.get("mapped_concept", "")
                 domain = insight.get("target_domain", "")
                 logic = insight.get("bridge_logic", "")
-                lines.append(f"- **{concept}** → {domain}：{logic}")
+                mc = insight.get("migration_conclusion", "")
+                mc_suffix = f" → **可迁移结论**：{mc}" if mc else ""
+                lines.append(f"- **{concept}** → {domain}：{logic}{mc_suffix}")
             lines.append("")
     # --- 适合谁读 ---
     if who_should_read:
@@ -435,7 +438,8 @@ def build_brief_page_from_compile(
     elif article.source:
         lines.append(f"- 来源：{article.source}")
     lines.append("")
-    return "\n".join(lines)
+    content, _ = fix_structure("\n".join(lines))
+    return content
 
 
 # ---------------------------------------------------------------------------
@@ -593,110 +597,151 @@ def build_source_page_from_compile(vault: Path, article: Article, slug: str, com
     else:
         lines.append("- 待 LLM 编译补充关键判断。")
     lines.extend(["", "## 使用建议", "", "- 快速了解先看本页和 `brief`。", "- 需要精确核对时回看 `raw` 原文。", ""])
-    return "\n".join(lines)
+    content, _ = fix_structure("\n".join(lines))
+    return content
 
 
 # ---------------------------------------------------------------------------
 # Knowledge pages (concept, entity, domain, synthesis, comparison)
 # ---------------------------------------------------------------------------
 
-def build_concept_page(name: str, source_slug: str, domains: list[str] | None = None, definition: str = "", related_entities: list[str] | None = None) -> str:
-    """Build a concept page. Domains should come from LLM compile, not script detection."""
-    domain_links = []
-    if domains:
-        domain_links = [f"- [[domains/{domain_slug(domain)}]]" for domain in domains]
-    else:
-        domain_links = ["- 待补充。"]
-    entity_links = []
-    if related_entities:
-        entity_links = [f"- [[entities/{entity_slug(e)}]]" for e in related_entities]
-    else:
-        entity_links = ["- 待补充。"]
+def build_concept_page(
+    name: str,
+    source_slug: str,
+    domains: list[str] | None = None,
+    definition: str = "",
+    related_entities: list[str] | None = None,
+    current_judgment: str = "",
+    evidence_chain: list[str] = [],
+    cross_domain_insights: list[dict] = [],
+    open_questions: list[str] = [],
+) -> str:
+    """Build a concept page with cognitive structure: definition + current judgment + evidence chain + cross-domain insights."""
+    domain_links = [f"- [[domains/{domain_slug(domain)}]]" for domain in (domains or [])] or ["- 待补充。"]
+    entity_links = [f"- [[entities/{entity_slug(e)}]]" for e in (related_entities or [])] or ["- 待补充。"]
     definition_text = definition.strip() if definition and definition.strip() else "- 待后续 query / lint / 人工复核补充定义。"
-    return "\n".join(
-        [
-            "---",
-            f'title: "{name}"',
-            'type: "concept"',
-            'status: "seed"',
-            'graph_role: "knowledge"',
-            'graph_include: "true"',
-            'lifecycle: "official"',
-            "---",
-            "",
-            f"# {name}",
-            "",
-            "## 定义",
-            "",
-            definition_text,
-            "",
-            "## 来自来源",
-            "",
-            f"- [[sources/{source_slug}]]",
-            "",
-            "## 相关实体",
-            "",
-            *entity_links,
-            "",
-            "## 相关主题域",
-            "",
-            *domain_links,
-            "",
-        ]
-    )
+    judgment_text = current_judgment.strip() if current_judgment and current_judgment.strip() else "- 待随着更多来源持续演化。"
+    evidence_lines = evidence_chain if evidence_chain else ["- 待随着更多来源持续演化。"]
+    # Cross-domain insight lines
+    insight_lines = []
+    if cross_domain_insights:
+        for insight in cross_domain_insights[:5]:
+            concept = insight.get("mapped_concept", "")
+            target = insight.get("target_domain", "")
+            logic = insight.get("bridge_logic", "")
+            mc = insight.get("migration_conclusion", "")
+            mc_suffix = f" → **可迁移结论**：{mc}" if mc else ""
+            insight_lines.append(f"- **{concept}** → {target}：{logic}{mc_suffix}")
+    if not insight_lines:
+        insight_lines = ["- 待随着更多来源持续演化。"]
+    content, _ = fix_structure("\n".join([
+        "---",
+        f'title: "{name}"',
+        'type: "concept"',
+        'status: "seed"',
+        'graph_role: "knowledge"',
+        'graph_include: "true"',
+        'lifecycle: "official"',
+        "---",
+        "",
+        f"# {name}",
+        "",
+        "## 定义",
+        "",
+        definition_text,
+        "",
+        "## 当前判断",
+        "",
+        judgment_text,
+        "",
+        "## 证据链",
+        "",
+        *evidence_lines,
+        "",
+        "## 跨域联想",
+        "",
+        *insight_lines,
+        "",
+        "## 未解问题",
+        "",
+        *(open_questions[:5] if open_questions else ["- 待随着更多来源持续演化。"]),
+        "",
+        "## 来自来源",
+        "",
+        f"- [[sources/{source_slug}]]",
+        "",
+        "## 相关实体",
+        "",
+        *entity_links,
+        "",
+        "## 相关主题域",
+        "",
+        *domain_links,
+        "",
+    ]))
+    return content
 
 
-def build_entity_page(name: str, source_slug: str, domains: list[str] | None = None, definition: str = "", related_concepts: list[str] | None = None) -> str:
-    """Build an entity page. Domains should come from LLM compile, not script detection."""
-    domain_links = []
-    if domains:
-        domain_links = [f"- [[domains/{domain_slug(domain)}]]" for domain in domains]
-    else:
-        domain_links = ["- 待补充。"]
-    concept_links = []
-    if related_concepts:
-        concept_links = [f"- [[concepts/{concept_slug(c)}]]" for c in related_concepts]
-    else:
-        concept_links = ["- 待补充。"]
+def build_entity_page(
+    name: str,
+    source_slug: str,
+    domains: list[str] | None = None,
+    definition: str = "",
+    related_concepts: list[str] | None = None,
+    current_judgment: str = "",
+    evidence_chain: list[str] = [],
+) -> str:
+    """Build an entity page with cognitive structure: type + current judgment + evidence chain."""
+    domain_links = [f"- [[domains/{domain_slug(domain)}]]" for domain in (domains or [])] or ["- 待补充。"]
+    concept_links = [f"- [[concepts/{concept_slug(c)}]]" for c in (related_concepts or [])] or ["- 待补充。"]
     definition_text = definition.strip() if definition and definition.strip() else "- 待补充（人物 / 公司 / 产品 / 方法 / 协议 / 模型）。"
-    return "\n".join(
-        [
-            "---",
-            f'title: "{name}"',
-            'type: "entity"',
-            'status: "seed"',
-            'graph_role: "knowledge"',
-            'graph_include: "true"',
-            'lifecycle: "official"',
-            "---",
-            "",
-            f"# {name}",
-            "",
-            "## 类型",
-            "",
-            definition_text,
-            "",
-            "## 来自来源",
-            "",
-            f"- [[sources/{source_slug}]]",
-            "",
-            "## 相关概念",
-            "",
-            *concept_links,
-            "",
-            "## 相关主题域",
-            "",
-            *domain_links,
-            "",
-        ]
-    )
+    judgment_text = current_judgment.strip() if current_judgment and current_judgment.strip() else "- 待随着更多来源持续演化。"
+    evidence_lines = evidence_chain if evidence_chain else ["- 待随着更多来源持续演化。"]
+    content, _ = fix_structure("\n".join([
+        "---",
+        f'title: "{name}"',
+        'type: "entity"',
+        'status: "seed"',
+        'graph_role: "knowledge"',
+        'graph_include: "true"',
+        'lifecycle: "official"',
+        "---",
+        "",
+        f"# {name}",
+        "",
+        "## 类型",
+        "",
+        definition_text,
+        "",
+        "## 当前判断",
+        "",
+        judgment_text,
+        "",
+        "## 证据链",
+        "",
+        *evidence_lines,
+        "",
+        "## 来自来源",
+        "",
+        f"- [[sources/{source_slug}]]",
+        "",
+        "## 相关概念",
+        "",
+        *concept_links,
+        "",
+        "## 相关主题域",
+        "",
+        *domain_links,
+        "",
+    ]))
+    return content
 
 
 def build_domain_page(name: str, source_slug: str, *, definition: str = "", concept_names: list[str] | None = None, entity_names: list[str] | None = None) -> str:
     overview = definition or "待随着更多来源持续演化。"
     concept_links = [f"- [[concepts/{concept_slug(c)}]]" for c in (concept_names or [])] or ["- 待补充。"]
     entity_links = [f"- [[entities/{entity_slug(e)}]]" for e in (entity_names or [])] or ["- 待补充。"]
-    return "\n".join(
+    content, _ = fix_structure("\n".join(
         [
             "---",
             f'title: "{name}"',
@@ -730,7 +775,8 @@ def build_domain_page(name: str, source_slug: str, *, definition: str = "", conc
             *entity_links,
             "",
         ]
-    )
+    ))
+    return content
 
 
 # Ordinal confidence weights for synthesis claim ranking
@@ -786,10 +832,28 @@ def _score_claim(claim: dict[str, str], terms: list[str]) -> int:
 
 
 def build_synthesis_page(vault: Path, name: str, source_slug: str, article: Article) -> str:
-    source_path = vault / "wiki" / "sources" / f"{source_slug}.md"
+    """Build a synthesis page scanning ALL sources in the domain for claims, stances, and insights."""
+    # Collect claims from ALL sources in this domain
     all_claims: list[dict[str, str]] = []
-    if source_path.exists():
-        all_claims = _extract_claims_from_source(source_path)
+    sources_dir = vault / "wiki" / "sources"
+    if sources_dir.exists():
+        for sp in sources_dir.glob("*.md"):
+            try:
+                claims = _extract_claims_from_source(sp)
+                all_claims.extend(claims)
+            except Exception:
+                continue
+
+    # Also collect claims from briefs in this domain
+    briefs_dir = vault / "wiki" / "briefs"
+    if briefs_dir.exists():
+        for bp in briefs_dir.glob("*.md"):
+            try:
+                claims = _extract_claims_from_source(bp)
+                all_claims.extend(claims)
+            except Exception:
+                continue
+
     terms = re.findall(r"[A-Za-z0-9\-\+]{2,}|[一-鿿]{2,8}", name)
 
     if all_claims:
@@ -804,49 +868,130 @@ def build_synthesis_page(vault: Path, name: str, source_slug: str, article: Arti
         lead_parts = [c["claim"].rstrip("。") for c in (actionable or deduped)[:2]]
         lead = f"{lead_parts[0]}。" if len(lead_parts) == 1 else f"{lead_parts[0]}；{lead_parts[1]}。" if lead_parts else "待补充。"
         claim_lines = []
-        for c in deduped[:4]:
+        for c in deduped[:6]:
             conf = c.get("confidence", "Preliminary")
+            etype = c.get("claim_type", "inference")
             marker = conf if _is_actionable_confidence(conf) else f"{conf}⚠️"
             src = c.get("_source", "")
             source_link = f" —— [[sources/{src}]]" if src else ""
-            claim_lines.append(f"- [{marker}] {c['claim']}{source_link}")
+            claim_lines.append(f"- [{etype}|{marker}] {c['claim']}{source_link}")
     else:
         bullets = top_lines(article, limit=4)
         lead = "；".join(b.rstrip("。") for b in bullets[:2]) + "。" if bullets else "待补充。"
         claim_lines = [f"- {item}" for item in bullets[:3]]
 
-    return "\n".join(
-        [
-            "---",
-            f'title: "{name} 综合分析"',
-            'type: "synthesis"',
-            'status: "seed"',
-            'graph_role: "knowledge"',
-            'graph_include: "true"',
-            'lifecycle: "official"',
-            f'domain: "{name}"',
-            "---",
+    # Collect stance positions for this domain
+    stance_lines = []
+    stances_dir = vault / "wiki" / "stances"
+    if stances_dir.exists():
+        for sp in stances_dir.glob("*.md"):
+            try:
+                text = sp.read_text(encoding="utf-8")
+                meta, body = parse_frontmatter(text)
+                title = meta.get("title", sp.stem).strip('"')
+                confidence = meta.get("confidence", "Working").strip('"')
+                status = meta.get("status", "active").strip('"')
+                source_count = meta.get("source_count", "0").strip('"')
+                core = section_body(body, "核心判断") or ""
+                core_short = plain_text(core)[:120] if core else ""
+                stance_lines.append(f"- **{title}**（置信度 {confidence}，{source_count} 个来源）：{core_short}")
+            except Exception:
+                continue
+
+    # Collect open questions for this domain
+    question_lines = []
+    questions_dir = vault / "wiki" / "questions"
+    if questions_dir.exists():
+        for qp in questions_dir.glob("*.md"):
+            try:
+                text = qp.read_text(encoding="utf-8")
+                meta, body = parse_frontmatter(text)
+                q_status = meta.get("status", "open").strip('"')
+                if q_status not in ("open", "partial"):
+                    continue
+                title = meta.get("title", qp.stem).strip('"')
+                question_lines.append(f"- [[questions/{qp.stem}]]（{q_status}）")
+            except Exception:
+                continue
+
+    # Collect cross-domain insights from briefs
+    insight_lines = []
+    if briefs_dir.exists():
+        for bp in briefs_dir.glob("*.md"):
+            try:
+                text = bp.read_text(encoding="utf-8")
+                _, body = parse_frontmatter(text)
+                cross_section = section_body(body, "跨域联想")
+                if not cross_section:
+                    continue
+                for line in cross_section.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("- "):
+                        insight_lines.append(stripped)
+            except Exception:
+                continue
+
+    # Build sections
+    sections = [
+        "---",
+        f'title: "{name} 综合分析"',
+        'type: "synthesis"',
+        'status: "seed"',
+        'graph_role: "knowledge"',
+        'graph_include: "true"',
+        'lifecycle: "official"',
+        f'domain: "{name}"',
+        "---",
+        "",
+        f"# {name} 综合分析",
+        "",
+        "## 当前结论",
+        "",
+        lead,
+        "",
+        "## 证据链",
+        "",
+        *claim_lines,
+        "",
+    ]
+
+    if stance_lines:
+        sections.extend([
+            "## 立场追踪",
             "",
-            f"# {name} 综合分析",
+            *stance_lines[:5],
             "",
-            "## 当前结论",
+        ])
+
+    if insight_lines:
+        sections.extend([
+            "## 跨域联想",
             "",
-            lead,
+            *insight_lines[:5],
             "",
-            "## 核心判断",
+        ])
+
+    if question_lines:
+        sections.extend([
+            "## 知识缺口",
             "",
-            *claim_lines,
+            *question_lines[:5],
             "",
-            "## 近期来源",
-            "",
-            f"- [[sources/{source_slug}]]",
-            "",
-            "## 后续维护",
-            "",
-            "- 新来源进入该主题域时，补充对比、冲突和演化判断。",
-            "",
-        ]
-    )
+        ])
+
+    sections.extend([
+        "## 近期来源",
+        "",
+        f"- [[sources/{source_slug}]]",
+        "",
+        "## 后续维护",
+        "",
+        "- 新来源进入该主题域时，补充对比、冲突和演化判断。",
+        "",
+    ])
+
+    content, _ = fix_structure("\n".join(sections))
+    return content
 
 
 def build_comparison_page(
@@ -886,8 +1031,8 @@ def build_comparison_page(
         source_lines,
         "",
     ]
-    return "\n".join(lines)
-
+    content, _ = fix_structure("\n".join(lines))
+    return content
 
 # ---------------------------------------------------------------------------
 # File I/O

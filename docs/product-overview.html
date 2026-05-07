@@ -3,141 +3,123 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Obsidian Wiki Skill — 产品概述 V1.3.0</title>
+<title>Obsidian Wiki Skill — 产品概述 V2.1</title>
 <style>
   :root {
     --bg: #0f1117; --bg2: #161822; --bg3: #1c1f2e;
     --text: #e2e4ed; --text2: #8b8fa3;
     --accent: #6c5ce7; --accent2: #a29bfe;
-    --raw: #e17055; --wiki: #00b894;
-    --concept: #4A90D9; --entity: #7B68EE; --source: #2ECC71; --synthesis: #E67E22; --brief: #95A5A6;
-    --card-bg: #222640; --border: #2d3148; --glow: rgba(108,92,231,0.15);
+    --intent: #6c5ce7; --emerge: #00b894; --physical: #e17055;
+    --border: #2d3148;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   html { scroll-behavior:smooth; }
-  body { font-family:-apple-system,"SF Pro Display","Segoe UI","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.7; overflow-x:hidden; }
+  body { font-family:-apple-system,"SF Pro Display","Segoe UI","Noto Sans SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.75; overflow-x:hidden; }
 
-  /* ---- SLIDE BASE ---- */
-  .slide { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
-  .slide-inner { width:100%; max-width:1200px; padding:0 64px; position:relative; z-index:2; }
-  nav { position:fixed; top:0; left:0; right:0; z-index:100; background:rgba(15,17,23,0.85); backdrop-filter:blur(16px); border-bottom:1px solid var(--border); }
-  nav .inner { max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:48px; padding:0 64px; }
-  nav .logo { font-weight:700; font-size:14px; color:var(--accent2); letter-spacing:0.5px; }
-  nav a { color:var(--text2); text-decoration:none; font-size:12px; margin-left:24px; transition:color 0.2s; }
+  /* ---- NAV ---- */
+  nav { position:fixed; top:0; left:0; right:0; z-index:100; background:rgba(15,17,23,0.88); backdrop-filter:blur(16px); border-bottom:1px solid var(--border); }
+  nav .inner { max-width:1100px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:52px; padding:0 48px; }
+  nav .logo { font-weight:700; font-size:15px; color:var(--accent2); letter-spacing:0.5px; }
+  nav a { color:var(--text2); text-decoration:none; font-size:14px; margin-left:28px; transition:color 0.2s; }
   nav a:hover { color:var(--text); }
 
-  /* compact header for content slides */
-  .slide-header { margin-bottom:16px; }
-  .slide-label { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:var(--accent2); margin-bottom:4px; font-weight:600; }
-  .slide-title { font-size:clamp(20px,2.5vw,28px); font-weight:700; margin-bottom:4px; }
-  .slide-desc { font-size:13px; color:var(--text2); max-width:600px; }
+  /* ---- SLIDE ---- */
+  .slide { width:100%; min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; padding:80px 0; }
+  .slide-inner { width:100%; max-width:1100px; padding:0 48px; position:relative; z-index:2; }
+  .slide-auto { min-height:auto; padding:60px 0; }
 
-  .fade-in { opacity:0; transform:translateY(16px); transition:opacity 0.5s ease, transform 0.5s ease; }
+  .slide-header { margin-bottom:28px; }
+  .slide-label { font-size:12px; text-transform:uppercase; letter-spacing:3px; color:var(--accent2); margin-bottom:6px; font-weight:600; }
+  .slide-title { font-size:clamp(24px,3vw,32px); font-weight:700; margin-bottom:6px; }
+  .slide-desc { font-size:16px; color:var(--text2); max-width:640px; }
+
+  .fade-in { opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease; }
   .fade-in.visible { opacity:1; transform:translateY(0); }
-  .scroll-hint { position:absolute; bottom:28px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--text2); font-size:11px; opacity:0.6; animation:bounce 2s infinite; }
-  @keyframes bounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(5px)} }
 
   /* ---- HERO ---- */
   .hero-slide { text-align:center; flex-direction:column; }
-  .hero-slide::before { content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:600px; background:radial-gradient(circle,rgba(108,92,231,0.1) 0%,transparent 65%); pointer-events:none; }
-  .hero-badge { display:inline-block; padding:4px 14px; border-radius:20px; background:rgba(108,92,231,0.1); border:1px solid rgba(108,92,231,0.25); font-size:11px; color:var(--accent2); margin-bottom:20px; letter-spacing:1.5px; }
-  .hero-slide h1 { font-size:clamp(30px,4vw,46px); font-weight:800; line-height:1.2; margin-bottom:12px; background:linear-gradient(135deg,#e2e4ed 30%,var(--accent2) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-  .hero-sub { font-size:15px; color:var(--text2); max-width:560px; margin:0 auto 24px; line-height:1.7; }
-  .hero-layers { display:flex; gap:14px; justify-content:center; align-items:center; margin-bottom:20px; }
-  .hero-layer { padding:10px 24px; border-radius:10px; font-size:13px; font-weight:600; }
-  .hero-layer.raw { background:rgba(225,112,85,0.08); border:1px solid rgba(225,112,85,0.25); color:var(--raw); }
-  .hero-layer.wiki { background:rgba(0,184,148,0.08); border:1px solid rgba(0,184,148,0.25); color:var(--wiki); }
-  .hero-arrow { color:var(--text2); font-size:16px; }
-  .hero-principles { display:flex; gap:16px; justify-content:center; margin-top:20px; flex-wrap:wrap; }
-  .hero-principle { padding:8px 16px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); font-size:11px; color:var(--text2); }
+  .hero-slide::before { content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:700px; height:700px; background:radial-gradient(circle,rgba(108,92,231,0.1) 0%,transparent 65%); pointer-events:none; }
+  .hero-badge { display:inline-block; padding:6px 18px; border-radius:20px; background:rgba(108,92,231,0.1); border:1px solid rgba(108,92,231,0.25); font-size:13px; color:var(--accent2); margin-bottom:24px; letter-spacing:1.5px; }
+  .hero-slide h1 { font-size:clamp(36px,5vw,52px); font-weight:800; line-height:1.2; margin-bottom:16px; background:linear-gradient(135deg,#e2e4ed 30%,var(--accent2) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero-sub { font-size:17px; color:var(--text2); max-width:600px; margin:0 auto 28px; line-height:1.75; }
+
+  /* ---- THREE-LAYER ---- */
+  .three-layer { display:flex; align-items:center; justify-content:center; gap:12px; margin:24px 0; }
+  .layer-box { padding:18px 32px; border-radius:12px; text-align:center; min-width:220px; }
+  .layer-box.intent { background:rgba(108,92,231,0.08); border:1px solid rgba(108,92,231,0.3); }
+  .layer-box.emerge { background:rgba(0,184,148,0.08); border:1px solid rgba(0,184,148,0.3); }
+  .layer-box.physical { background:rgba(225,112,85,0.08); border:1px solid rgba(225,112,85,0.3); }
+  .layer-box h4 { font-size:15px; font-weight:700; margin-bottom:4px; }
+  .layer-box.intent h4 { color:var(--intent); }
+  .layer-box.emerge h4 { color:var(--emerge); }
+  .layer-box.physical h4 { color:var(--physical); }
+  .layer-box p { font-size:13px; color:var(--text2); line-height:1.5; }
+  .layer-arrow { color:var(--text2); font-size:22px; margin:0 4px; }
+
+  .hero-principles { display:flex; gap:14px; justify-content:center; margin-top:24px; flex-wrap:wrap; }
+  .hero-principle { padding:10px 20px; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); font-size:14px; color:var(--text2); }
   .hero-principle strong { color:var(--text); }
-  .hero-karpathy { margin-top:20px; font-size:11px; color:var(--text2); }
+  .hero-karpathy { margin-top:24px; font-size:13px; color:var(--text2); }
   .hero-karpathy a { color:var(--accent2); text-decoration:none; }
 
-  /* ---- THREE-STAGE PATTERN ---- */
-  .three-stage { display:flex; align-items:center; justify-content:center; gap:0; margin:24px 0; }
-  .stage-box { padding:14px 22px; border-radius:10px; text-align:center; min-width:180px; }
-  .stage-box.script { background:rgba(225,112,85,0.06); border:1px solid rgba(225,112,85,0.2); }
-  .stage-box.llm { background:rgba(108,92,231,0.08); border:1px solid rgba(108,92,231,0.25); }
-  .stage-box h4 { font-size:12px; font-weight:700; margin-bottom:3px; }
-  .stage-box.script h4 { color:var(--raw); }
-  .stage-box.llm h4 { color:var(--accent2); }
-  .stage-box p { font-size:10px; color:var(--text2); line-height:1.5; }
-  .stage-arrow { color:var(--text2); font-size:18px; margin:0 8px; }
+  .scroll-hint { position:absolute; bottom:32px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--text2); font-size:12px; opacity:0.6; animation:bounce 2s infinite; }
+  @keyframes bounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(6px)} }
 
-  /* ---- ARCHITECTURE DIAGRAM (compact) ---- */
-  .arch-full { position:relative; }
-  .arch-inputs { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin-bottom:8px; }
-  .arch-flow { display:flex; align-items:stretch; gap:0; margin-bottom:12px; }
-  .arch-col { flex:1; padding:12px 14px; border:1px solid var(--border); background:var(--bg2); position:relative; }
-  .arch-col:first-child { border-radius:10px 0 0 10px; }
-  .arch-col:last-child { border-radius:0 10px 10px 0; }
-  .arch-col + .arch-col { border-left:none; }
-  .arch-col-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:5px; }
-  .arch-col-title .dot { width:7px; height:7px; border-radius:50%; }
-  .arch-item { padding:3px 9px; border-radius:5px; font-size:11px; font-weight:500; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); white-space:nowrap; }
-  .arch-item.highlight { border-color:var(--accent); background:rgba(108,92,231,0.06); }
-  .arch-arrow-col { display:flex; align-items:center; justify-content:center; width:28px; flex-shrink:0; color:var(--text2); font-size:14px; }
-  .arch-bottom { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
-  .arch-output { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
-  .arch-output h4 { font-size:11px; font-weight:700; margin-bottom:3px; color:var(--accent2); }
-  .arch-output p { font-size:10px; color:var(--text2); line-height:1.5; }
-  .arch-output .items { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:6px; }
-  .arch-output .items span { font-size:9px; padding:2px 5px; border-radius:3px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
-  .arch-label-arrow { text-align:center; color:var(--text2); font-size:12px; margin:6px 0; }
+  /* ---- PROBLEM ---- */
+  .problem-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+  .problem-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:28px 24px; transition:border-color 0.3s; }
+  .problem-card:hover { border-color:var(--accent); }
+  .problem-icon { font-size:28px; margin-bottom:12px; }
+  .problem-card h4 { font-size:16px; font-weight:700; margin-bottom:8px; color:var(--accent2); }
+  .problem-card .fail { font-size:14px; color:var(--physical); margin-bottom:8px; font-weight:500; }
+  .problem-card .solve { font-size:14px; color:var(--emerge); font-weight:500; margin-bottom:8px; }
+  .problem-card p { font-size:13px; color:var(--text2); line-height:1.6; }
 
-  /* ---- PROMPT TABLE ---- */
-  .prompt-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px; }
-  .prompt-card { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; transition:border-color 0.3s; }
-  .prompt-card:hover { border-color:var(--accent); }
-  .prompt-card h5 { font-size:11px; font-weight:700; color:var(--accent2); margin-bottom:2px; }
-  .prompt-card p { font-size:9px; color:var(--text2); line-height:1.4; }
-
-  /* ---- SEQUENCE DIAGRAM ---- */
-  .seq-container { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px; overflow:auto; position:relative; }
-  .seq-container svg { display:block; width:100%; height:auto; }
-  .mermaid { font-family:inherit; }
-  .mermaid .actor-line { stroke:var(--accent) !important; stroke-width:1.5px !important; }
-  .mermaid .messageLine0 { stroke:var(--text2) !important; }
-  .mermaid .note { fill:var(--bg3) !important; stroke:var(--border) !important; }
-  .mermaid .activation0, .mermaid .activation1, .mermaid .activation2 { fill:var(--bg3) !important; stroke:var(--accent) !important; }
+  /* ---- VALUE LAYERS ---- */
+  .value-section { margin-bottom:32px; }
+  .value-section-title { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .value-section-title .dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+  .value-section-title h3 { font-size:18px; font-weight:700; }
+  .value-section-title .sub { font-size:14px; color:var(--text2); margin-left:8px; }
+  .value-cards { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  .v-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:22px 20px; transition:border-color 0.3s; }
+  .v-card:hover { border-color:var(--accent); }
+  .v-card h4 { font-size:15px; font-weight:700; margin-bottom:6px; }
+  .v-card p { font-size:14px; color:var(--text2); line-height:1.6; }
+  .v-card .tag { display:inline-block; margin-top:8px; padding:3px 10px; border-radius:6px; font-size:12px; font-weight:600; }
 
   /* ---- FEATURES ---- */
-  .features-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-  .f-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px 14px; transition:border-color 0.3s, transform 0.2s; }
+  .features-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .f-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:22px 20px; transition:border-color 0.3s, transform 0.2s; }
   .f-card:hover { border-color:var(--accent); transform:translateY(-2px); }
-  .f-icon { font-size:20px; margin-bottom:6px; }
-  .f-card h4 { font-size:12px; font-weight:700; margin-bottom:3px; }
-  .f-card p { font-size:10px; color:var(--text2); line-height:1.5; }
-  .f-tag { display:inline-block; margin-top:5px; padding:2px 7px; border-radius:5px; font-size:9px; font-weight:600; background:rgba(108,92,231,0.1); color:var(--accent2); }
-  .f-highlight { border-color:var(--accent) !important; background:linear-gradient(135deg,rgba(108,92,231,0.08) 0%,rgba(162,155,254,0.04) 100%) !important; }
-  .f-highlight .f-icon { font-size:24px; }
-
-  /* ---- VALUE ---- */
-  .value-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  .v-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:18px 16px; display:flex; gap:10px; transition:border-color 0.3s; }
-  .v-card:hover { border-color:var(--accent); }
-  .v-num { flex-shrink:0; width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; background:rgba(108,92,231,0.1); color:var(--accent2); }
-  .v-card h4 { font-size:12px; font-weight:700; margin-bottom:2px; }
-  .v-card p { font-size:10px; color:var(--text2); line-height:1.5; }
+  .f-icon { font-size:24px; margin-bottom:10px; }
+  .f-card h4 { font-size:15px; font-weight:700; margin-bottom:6px; }
+  .f-card p { font-size:13px; color:var(--text2); line-height:1.6; }
 
   /* ---- FOOTER ---- */
   .footer-slide { flex-direction:column; text-align:center; }
-  .footer-slide h2 { font-size:clamp(26px,3vw,38px); font-weight:800; margin-bottom:10px; background:linear-gradient(135deg,#e2e4ed 30%,var(--accent2) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-  .footer-slide p { color:var(--text2); font-size:13px; }
+  .footer-slide h2 { font-size:clamp(30px,3.5vw,42px); font-weight:800; margin-bottom:12px; background:linear-gradient(135deg,#e2e4ed 30%,var(--accent2) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .footer-slide p { color:var(--text2); font-size:15px; }
+  .who-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; text-align:left; max-width:720px; margin:0 auto; }
+  .who-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:18px 20px; }
+  .who-card .title { font-size:15px; font-weight:600; color:var(--emerge); margin-bottom:4px; }
+  .who-card .desc { font-size:13px; color:var(--text2); }
 
-  @media (max-width:900px) {
+  /* ---- RESPONSIVE ---- */
+  @media (max-width:960px) {
     .slide-inner { padding:0 28px; }
-    .arch-flow { flex-direction:column; }
-    .arch-arrow-col { transform:rotate(90deg); height:28px; }
-    .arch-bottom { grid-template-columns:1fr 1fr; }
+    .problem-grid { grid-template-columns:1fr; }
+    .value-cards { grid-template-columns:1fr; }
     .features-grid { grid-template-columns:1fr 1fr; }
-    .value-grid { grid-template-columns:1fr; }
-    .prompt-grid { grid-template-columns:1fr 1fr; }
+    .three-layer { flex-direction:column; }
+    .layer-arrow { transform:rotate(90deg); }
     .hero-principles { flex-direction:column; align-items:center; }
-    .three-stage { flex-direction:column; }
-    .stage-arrow { transform:rotate(90deg); }
     nav .inner { padding:0 28px; }
+    .who-grid { grid-template-columns:1fr; }
+  }
+  @media (max-width:640px) {
+    .features-grid { grid-template-columns:1fr; }
+    .slide { padding:60px 0; }
   }
 </style>
 </head>
@@ -148,609 +130,223 @@
     <span class="logo">Obsidian Wiki Skill</span>
     <div>
       <a href="#s1">概述</a>
-      <a href="#s2">架构</a>
-      <a href="#s3">三阶段模式</a>
-      <a href="#s4">入库时序</a>
-      <a href="#s4b">分块精读</a>
-      <a href="#s5">深度研究</a>
-      <a href="#s6">能力</a>
-      <a href="#s7">价值</a>
+      <a href="#s2">问题</a>
+      <a href="#s3">生长</a>
+      <a href="#s4">编译</a>
+      <a href="#s5">基础</a>
+      <a href="#s6">适合谁</a>
     </div>
   </div>
 </nav>
 
-<!-- ==================== SLIDE 1: HERO + PHILOSOPHY ==================== -->
+<!-- ==================== SLIDE 1: HERO ==================== -->
 <section class="slide hero-slide" id="s1">
   <div class="slide-inner">
-    <div class="hero-badge">V1.3.0 &middot; Chunked Deep-Reading &middot; Schema Auto-Correction &middot; 8 Prompt Constraints</div>
-    <h1>把外部知识编译进 Obsidian<br>构建个人知识操作系统</h1>
-    <p class="hero-sub">不是做一次性摘要——每次入库，整个知识库产生新的连接、新的问题、新的视角。写入成本可见，读出价值更可见。</p>
-    <div class="hero-layers">
-      <div class="hero-layer raw">raw/ &ensp;不可变原始证据</div>
-      <div class="hero-arrow">&rarr;</div>
-      <div class="hero-layer wiki">wiki/ &ensp;AI 编译知识层</div>
+    <div class="hero-badge">V2.1 &middot; Value Point + Domain Proposal + 跨Vault桥接</div>
+    <h1>知识库随意图生长</h1>
+    <p class="hero-sub">你说为什么关注，系统围绕意图组织认知；<br>新领域反复出现，系统主动感知并提议；<br>查一个库，自动桥接其他库的洞察。</p>
+    <div class="three-layer">
+      <div class="layer-box intent">
+        <h4>意图层</h4>
+        <p>Value Point<br>表达为什么关注</p>
+      </div>
+      <div class="layer-arrow">&rarr;</div>
+      <div class="layer-box emerge">
+        <h4>涌现层</h4>
+        <p>Domain + Proposal<br>领域从内容涌现</p>
+      </div>
+      <div class="layer-arrow">&rarr;</div>
+      <div class="layer-box physical">
+        <h4>物理层</h4>
+        <p>Vault<br>raw/ 证据 + wiki/ 编译</p>
+      </div>
     </div>
     <div class="hero-principles">
-      <div class="hero-principle"><strong>两层证据</strong> &ensp;raw 不可变 / wiki 可演化</div>
-      <div class="hero-principle"><strong>LLM 优先</strong> &ensp;LLM 做判断，脚本做 I/O</div>
-      <div class="hero-principle"><strong>三阶段模式</strong> &ensp;脚本收集 → LLM 判断 → 脚本执行</div>
-      <div class="hero-principle"><strong>Prompt 约束</strong> &ensp;10 份结构化约束文件</div>
-      <div class="hero-principle"><strong>成熟度门槛</strong> &ensp;&ge;2 来源引用才建页</div>
-      <div class="hero-principle"><strong>风险分级</strong> &ensp;Low 自动 / Medium 展示 / High 确认</div>
+      <div class="hero-principle"><strong>意图锚定</strong> &ensp;不是关注什么，而是为什么关注</div>
+      <div class="hero-principle"><strong>领域涌现</strong> &ensp;≥3 篇来源触发提案</div>
+      <div class="hero-principle"><strong>跨库桥接</strong> &ensp;检索时自动补充其他 vault 洞察</div>
+      <div class="hero-principle"><strong>入库即编译</strong> &ensp;立场影响 + 开放问题 + 跨域洞察</div>
+      <div class="hero-principle"><strong>脚本导航 LLM 判断</strong> &ensp;预计算是线索，语义由 LLM 执行</div>
     </div>
     <p class="hero-karpathy">设计思想参考 <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f">Karpathy llm-wiki</a>：ingest 是编译而不是归档</p>
   </div>
   <div class="scroll-hint"><span>&#8595;</span> 向下滚动</div>
 </section>
 
-<!-- ==================== SLIDE 2: UNIFIED ARCHITECTURE ==================== -->
+<!-- ==================== SLIDE 2: PROBLEM ==================== -->
 <section class="slide" id="s2">
   <div class="slide-inner">
     <div class="slide-header">
-      <div class="slide-label">System Architecture</div>
-      <div class="slide-title">全貌架构</div>
-      <div class="slide-desc">输入 &rarr; 五阶段流水线 &rarr; 知识层 &rarr; 多形态输出 &ensp;|&ensp; 脚本是手和脚，LLM 是大脑</div>
+      <div class="slide-label">Why Different</div>
+      <div class="slide-title">知识库的根本失败不是维护困难</div>
+      <div class="slide-desc">是不知道自己为什么存在</div>
     </div>
-    <div class="arch-full fade-in">
-      <!-- Input sources -->
-      <div class="arch-inputs">
-        <div class="arch-item" style="border-color:var(--raw);">微信公众号</div>
-        <div class="arch-item" style="border-color:var(--raw);">网页</div>
-        <div class="arch-item" style="border-color:var(--raw);">YouTube / B站 / 抖音</div>
-        <div class="arch-item" style="border-color:var(--raw);">PDF / DOCX / PPTX / XLSX</div>
-        <div class="arch-item" style="border-color:var(--raw);">Markdown / 纯文本</div>
+    <div class="problem-grid fade-in">
+      <div class="problem-card">
+        <div class="problem-icon">&#127919;</div>
+        <h4>意图缺失</h4>
+        <div class="fail">没有意图锚点，积累是噪音——检索再快也是空转</div>
+        <div class="solve">Value Point：表达为什么关注，知识围绕意图组织</div>
+        <p>导入几百篇文章后三个月停更，因为每次入库只是"多了一篇"，不知道这些知识在为什么问题服务</p>
       </div>
-      <div class="arch-label-arrow">&darr; 域优先路由</div>
-
-      <!-- Pipeline + Knowledge Layer + Systems -->
-      <div class="arch-flow">
-        <div class="arch-col" style="flex:1.2;">
-          <div class="arch-col-title"><div class="dot" style="background:var(--accent)"></div> 五阶段流水线</div>
-          <div style="display:flex;flex-direction:column;gap:5px;">
-            <div class="arch-item highlight">1. Fetch + 格式归一化</div>
-            <div class="arch-item highlight">2. Ingest &rarr; raw/</div>
-            <div class="arch-item highlight">3. Two-Step CoT Compile</div>
-            <div class="arch-item highlight">4. Risk-Graded Apply &rarr; wiki/</div>
-            <div class="arch-item highlight">5. LLM 影响分析 + PDF</div>
-          </div>
-        </div>
-        <div class="arch-arrow-col">&rarr;</div>
-        <div class="arch-col" style="flex:2;">
-          <div class="arch-col-title"><div class="dot" style="background:var(--wiki)"></div> 知识层 wiki/</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
-            <div class="arch-item" style="border-color:var(--brief)">briefs/ + PDF</div>
-            <div class="arch-item" style="border-color:var(--source)">sources/</div>
-            <div class="arch-item" style="border-color:var(--concept)">concepts/</div>
-            <div class="arch-item" style="border-color:var(--entity)">entities/</div>
-            <div class="arch-item" style="border-color:var(--synthesis)">syntheses/</div>
-            <div class="arch-item">domains/</div>
-            <div class="arch-item">questions/</div>
-            <div class="arch-item">stances/</div>
-            <div class="arch-item">comparisons/</div>
-            <div class="arch-item" style="border-color:var(--accent)">research/ + PDF</div>
-          </div>
-        </div>
-        <div class="arch-arrow-col">&rarr;</div>
-        <div class="arch-col" style="flex:1;">
-          <div class="arch-col-title"><div class="dot" style="background:var(--synthesis)"></div> 自动化系统</div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div class="arch-item">知识图谱 Mermaid</div>
-            <div class="arch-item">域子图页面</div>
-            <div class="arch-item">主张演化（LLM 驱动）</div>
-            <div class="arch-item">深度研究触发</div>
-            <div class="arch-item">7 项红线检验</div>
-          </div>
-        </div>
+      <div class="problem-card">
+        <div class="problem-icon">&#127793;</div>
+        <h4>涌现断裂</h4>
+        <div class="fail">新方向沉默入库，你不知道知识库正在往哪里走</div>
+        <div class="solve">Domain Proposal：≥3 篇来源触发提案，系统主动感知方向变化</div>
+        <p>不知不觉看了 3 篇城市规划文章，但没有任何信号告诉你：这个方向正在生长，值得成为新的关注锚点</p>
       </div>
-
-      <!-- Outputs -->
-      <div class="arch-label-arrow">&darr; 输出</div>
-      <div class="arch-bottom">
-        <div class="arch-output">
-          <h4>口语化查询</h4>
-          <p>LLM 理解意图<br>搜索 + 综合 + 格式化</p>
-          <div class="items">
-            <span style="border-color:var(--accent)">快速了解</span>
-            <span style="border-color:var(--synthesis)">深度综合</span>
-            <span style="border-color:var(--concept)">对比/简报</span>
-          </div>
-        </div>
-        <div class="arch-output">
-          <h4>PDF 输出</h4>
-          <p>brief.pdf + report.pdf<br>Playwright + Chrome 渲染</p>
-        </div>
-        <div class="arch-output">
-          <h4>深度研究</h4>
-          <p>9 阶段假说驱动<br>质量门控 + PDF 报告</p>
-        </div>
-        <div class="arch-output">
-          <h4>知识图谱</h4>
-          <p>Mermaid 静态图<br>Louvain 社区分组</p>
-        </div>
+      <div class="problem-card">
+        <div class="problem-icon">&#128279;</div>
+        <h4>桥接断裂</h4>
+        <div class="fail">多个库各自孤立，跨域洞察断裂</div>
+        <div class="solve">跨 Vault 桥接：检索时自动从其他库补充洞察</div>
+        <p>认知科学库的"认知负荷"和社会批判库的"文化资本异化学习"高度相关，但两个库各自检索，看不到彼此</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ==================== SLIDE 3: THREE-STAGE PATTERN ==================== -->
-<section class="slide" id="s3">
+<!-- ==================== SLIDE 3: VALUE LAYER 1 — GROWTH ==================== -->
+<section class="slide slide-auto" id="s3">
   <div class="slide-inner">
     <div class="slide-header">
-      <div class="slide-label">LLM-First Architecture</div>
-      <div class="slide-title">三阶段统一模式</div>
-      <div class="slide-desc">所有维护脚本统一接口：脚本收集数据 → LLM 语义判断 → 脚本执行写入</div>
+      <div class="slide-label">Value Layer 1</div>
+      <div class="slide-title">知识随意图生长</div>
+      <div class="slide-desc">V2.1 — 让知识库从被动归档变成主动生长</div>
     </div>
-
-    <div class="three-stage fade-in">
-      <div class="stage-box script">
-        <h4>Phase 1: 脚本收集</h4>
-        <p>--collect-only<br>机械数据采集<br>输出结构化 JSON</p>
+    <div class="value-cards fade-in">
+      <div class="v-card">
+        <h4>意图锚定</h4>
+        <p>在 purpose.md 声明价值锚点，入库时自动匹配意图。知识围绕意图组织而非被动堆叠。Value Point 说的是"为什么关注"，不是"关注什么"。</p>
+        <span class="tag" style="background:rgba(108,92,231,0.1);color:var(--accent2);">purpose.md</span>
       </div>
-      <div class="stage-arrow">&rarr;</div>
-      <div class="stage-box llm">
-        <h4>Phase 2: LLM 判断</h4>
-        <p>读取 JSON + Prompt 约束<br>语义分析 / 关系判断<br>输出结构化结果</p>
+      <div class="v-card">
+        <h4>领域涌现</h4>
+        <p>compile 产出 domain，不匹配已有锚点时累积到 domain-proposals.json。同 domain ≥3 篇来源后系统主动提议——"这个方向反复出现，要成为新锚点吗？"</p>
+        <span class="tag" style="background:rgba(0,184,148,0.1);color:var(--emerge);">domain-proposals.json</span>
       </div>
-      <div class="stage-arrow">&rarr;</div>
-      <div class="stage-box script">
-        <h4>Phase 3: 脚本执行</h4>
-        <p>--apply result.json<br>写入 wiki 页面<br>重建索引 + 日志</p>
+      <div class="v-card">
+        <h4>跨库桥接</h4>
+        <p>查询时跨域洞察指向其他 vault 的关注领域，自动补充检索 top-3，标记来源和桥接逻辑。不用切换 vault 就能获得跨域答案。</p>
+        <span class="tag" style="background:rgba(108,92,231,0.1);color:var(--accent2);">wiki_retrieve.py</span>
       </div>
-    </div>
-
-    <div style="margin-top:20px;">
-      <div class="slide-label" style="margin-bottom:8px;">10 份 Prompt 约束文件</div>
-      <div class="prompt-grid fade-in">
-        <div class="prompt-card">
-          <h5>lint_semantic</h5>
-          <p>健康检查语义分析<br>修复建议 + 升级候选</p>
-        </div>
-        <div class="prompt-card">
-          <h5>claim_evolution</h5>
-          <p>主张关系分析<br>reinforce / contradict / extend</p>
-        </div>
-        <div class="prompt-card">
-          <h5>synthesis_refresh</h5>
-          <p>综合页内容生成<br>分歧识别 + 知识缺口</p>
-        </div>
-        <div class="prompt-card">
-          <h5>review_queue</h5>
-          <p>审核队列排序<br>优先级 + 操作建议</p>
-        </div>
-        <div class="prompt-card">
-          <h5>review_sweep</h5>
-          <p>Review sweep 自动清理<br>R1/R2 规则 + LLM 语义判断</p>
-        </div>
-        <div class="prompt-card">
-          <h5>insight_detection</h5>
-          <p>洞见识别约束<br>10 信号加权评分，阈值 ≥ 3</p>
-        </div>
-        <div class="prompt-card">
-          <h5>ingest_impact</h5>
-          <p>入库影响分析<br>语义相关来源 + 跨域联想</p>
-        </div>
-        <div class="prompt-card">
-          <h5>ingest_compile_v2</h5>
-          <p>入库编译约束<br>Two-Step CoT + 证据标注</p>
-        </div>
-        <div class="prompt-card">
-          <h5>query_synthesis</h5>
-          <p>查询综合与验证<br>来源可信度 + 高精度验证</p>
-        </div>
-        <div class="prompt-card">
-          <h5>research_hypothesis</h5>
-          <p>研究假说形成与校准<br>证据分类 + 压力测试</p>
-        </div>
-      </div>
-    </div>
-
-    <div style="margin-top:16px; display:grid; grid-template-columns:repeat(6,1fr); gap:8px;" class="fade-in">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;color:var(--accent2);">wiki_lint.py</div>
-        <div style="font-size:9px;color:var(--text2);">健康检查</div>
-      </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;color:var(--accent2);">claim_evolution</div>
-        <div style="font-size:9px;color:var(--text2);">主张演化</div>
-      </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;color:var(--accent2);">review_queue</div>
-        <div style="font-size:9px;color:var(--text2);">审核队列</div>
-      </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;color:var(--accent2);">refresh_synthesis</div>
-        <div style="font-size:9px;color:var(--text2);">综合刷新</div>
-      </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;color:var(--accent2);">delta_compile</div>
-        <div style="font-size:9px;color:var(--text2);">增量编译</div>
-      </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;">
-        <div style="font-size:10px;font-weight:700;color:var(--accent2);">ingest_report</div>
-        <div style="font-size:9px;color:var(--text2);">入库报告</div>
+      <div class="v-card">
+        <h4>路由建议</h4>
+        <p>入库后如果 domain 更匹配另一个 vault，影响报告显示建议。用户可运行 reroute_vault.py 一键迁移 source。</p>
+        <span class="tag" style="background:rgba(0,184,148,0.1);color:var(--emerge);">reroute_vault.py</span>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ==================== SLIDE 4: INGEST SEQUENCE ==================== -->
-<section class="slide" id="s4">
-  <div class="slide-inner" style="padding-top:52px;padding-bottom:8px;">
-    <div class="slide-header">
-      <div class="slide-label">Ingest Flow</div>
-      <div class="slide-title">单篇入库完整时序</div>
-    </div>
-    <div class="seq-container fade-in" style="height:calc(100vh - 130px);">
-      <pre class="mermaid">
-sequenceDiagram
-    participant U as 用户
-    participant O as orchestrator
-    participant A as adapters
-    participant C as compile (Two-Step CoT)
-    participant P as page_builders
-    participant T as taxonomy
-    participant Q as question
-    participant S as stance
-    participant G as graph
-    participant GL as graph_layers
-    participant DR as triggers
-    participant R as report (LLM-driven)
-    participant PDF as pdf_utils
-
-    U->>O: ingest_article(vault, article)
-    O->>A: fetch + format normalization
-    A-->>O: Markdown + metadata
-    O->>O: write raw/articles/{slug}.md
-    O->>C: try_llm_compile()
-    Note over C: Step 1: fact_extraction<br>Step 2: structure_compile (constrained by ingest_compile_v2)
-    C-->>O: compiled_payload (v2 JSON)
-    O->>P: build_brief_page()
-    P-->>O: brief md
-    O->>PDF: brief_to_pdf()
-    PDF-->>O: {slug}.pdf
-    O->>P: build_source_page()
-    O->>T: ensure_taxonomy_pages()
-    T->>T: concepts/ + entities/ + domains/
-    O->>Q: write_question_page()
-    O->>S: apply_stance_impact()
-    O->>T: ensure_comparison_page()
-    O->>G: write_knowledge_graph()
-    O->>GL: build_all_domain_subgraphs()
-    Note over O: claim evolution 由 LLM 按 claim_evolution.md 分析
-    O->>R: collect_ingest_data() → LLM 按 ingest_impact.md 分析
-    O->>DR: detect_triggers()
-    DR-->>O: deep research suggestions
-    O-->>U: result (status + PDF + report + triggers)
-      </pre>
-    </div>
-  </div>
-</section>
-
-<!-- ==================== SLIDE 4B: CHUNKED DEEP-READING ==================== -->
-<section class="slide" id="s4b">
+<!-- ==================== SLIDE 4: VALUE LAYER 2 — COMPILE ==================== -->
+<section class="slide slide-auto" id="s4">
   <div class="slide-inner">
     <div class="slide-header">
-      <div class="slide-label">Chunked Deep-Reading</div>
-      <div class="slide-title">分块深度精读 — Map-Reduce 范式</div>
-      <div class="slide-desc">长文档自动分块 → 逐块提取 → 跨块综合 → V2.0 Compile JSON &ensp;|&ensp; 精读版 claim 9x 粗读版</div>
+      <div class="slide-label">Value Layer 2</div>
+      <div class="slide-title">入库即编译</div>
+      <div class="slide-desc">V2.0 — 入库不是归档，是认知编译</div>
     </div>
-    <div class="three-stage fade-in">
-      <div class="stage-box script">
-        <h4>Long Document</h4>
-        <p>PDF / 网页 / ASR<br>&gt;800 行自动触发<br>--chunk-size 可调</p>
+    <div class="value-cards fade-in">
+      <div class="v-card">
+        <h4>立场影响检测</h4>
+        <p>reinforce / contradict / extend——每次入库不只是"多了一篇"，而是整个知识库的立场网络发生变化。</p>
+        <span class="tag" style="background:rgba(230,126,34,0.1);color:#e67e22;">stance_impacts</span>
       </div>
-      <div class="stage-arrow">&rarr;</div>
-      <div class="stage-box llm">
-        <h4>Per-Chunk Extract</h4>
-        <p>逐块 LLM 处理<br>保证每段文本<br>都被认真阅读</p>
+      <div class="v-card">
+        <h4>开放问题推进</h4>
+        <p>open → partial → resolved，新来源自动关联已有问题。影响报告展示知识库变化和可探索方向。</p>
+        <span class="tag" style="background:rgba(230,126,34,0.1);color:#e67e22;">open_questions</span>
       </div>
-      <div class="stage-arrow">&rarr;</div>
-      <div class="stage-box script">
-        <h4>Cross-Chunk Synthesis</h4>
-        <p>跨块综合<br>合并 claim + skeleton<br>V2.0 compile JSON</p>
+      <div class="v-card">
+        <h4>跨域洞察</h4>
+        <p>方法论迁移、因果结构类比、抽象模式共享——带 bridge_logic 和迁移结论，不只是"相似"而是"可迁移策略"。</p>
+        <span class="tag" style="background:rgba(230,126,34,0.1);color:#e67e22;">cross_domain_insights</span>
       </div>
-    </div>
-    <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;" class="fade-in">
-      <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:var(--accent2);">9x</div>
-        <div style="font-size:11px;color:var(--text2);">精读版 claim 数量</div>
-        <div style="font-size:9px;color:var(--text2);">vs 粗读版</div>
+      <div class="v-card">
+        <h4>精读 9 倍</h4>
+        <p>长文档自动分块 → 逐块提取 → 跨块综合，claim 密度是粗读的 9 倍。Schema 自动修正编译输出偏差。</p>
+        <span class="tag" style="background:rgba(230,126,34,0.1);color:#e67e22;">chunked-prepare</span>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:var(--accent2);">37</div>
-        <div style="font-size:11px;color:var(--text2);">精读版 claim_inventory</div>
-        <div style="font-size:9px;color:var(--text2);">粗读版仅 4 条</div>
-      </div>
-      <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center;">
-        <div style="font-size:24px;font-weight:800;color:var(--accent2);">6</div>
-        <div style="font-size:11px;color:var(--text2);">骨架生成力</div>
-        <div style="font-size:9px;color:var(--text2);">粗读版仅 3 条</div>
-      </div>
-    </div>
-    <p style="margin-top:16px;text-align:center;color:var(--text2);font-size:11px;">自动阈值 &gt;800 行 | --chunk-size 可调 | 7 源全覆盖 | 后端 raw 文件层面操作，与前端来源类型完全解耦</p>
-  </div>
-</section>
-
-<!-- ==================== SLIDE 5: DEEP RESEARCH SEQUENCE ==================== -->
-<section class="slide" id="s5">
-  <div class="slide-inner" style="padding-top:52px;padding-bottom:8px;">
-    <div class="slide-header">
-      <div class="slide-label">Deep Research Flow</div>
-      <div class="slide-title">深度研究完整时序</div>
-    </div>
-    <div class="seq-container fade-in" style="height:calc(100vh - 130px);">
-      <pre class="mermaid">
-sequenceDiagram
-    participant U as 用户
-    participant A as Claude Code (LLM)
-    participant DR as deep_research.py
-    participant DL as dependency_ledger
-    participant V as validation
-    participant PDF as pdf_utils
-
-    U->>A: "深入研究 X"
-    A->>A: Phase 0: 读 hot.md + 立场 + 问题
-    A->>U: Phase 1: 为什么重要？
-    U-->>A: 真实需求
-    A->>A: Phase 2: 形成 2-4 假说（按 research_hypothesis.md 约束）
-    A->>DR: init(topic, hypotheses)
-    DR->>DL: init_ledger_page()
-    DR-->>A: ledger_path
-    A->>DR: Phase 3: collect_vault_evidence()
-    DR-->>A: candidates（脚本预排序，LLM 按 F/I/A 重新分类）
-    loop Phase 4: Adaptive Rounds
-        A->>A: WebSearch 确认 + 反驳
-        A->>A: 结果走 ingest pipeline
-        A->>DL: update-confidence (+/-15-35%)
-        A->>DR: check-sufficiency()
-        alt 不通过
-            A->>A: 继续下一轮
-        end
-    end
-    A->>A: Phase 5: 外部事实校准
-    A->>A: Phase 6: 根本问题挖掘
-    A->>DR: Phase 7: record-scenarios()
-    A->>DR: Phase 8: record-premortem()
-    A->>A: Phase 9: 打包 Why/What/How/Trace
-    A->>DR: finalize_report()
-    Note over DR,V: Phase 9.5: 质量门控
-    DR->>V: validate_report()
-    V->>V: 7 项红线 + 依赖链审查
-    V-->>DR: ValidationResult
-    DR->>DR: 附录 A 写入报告
-    DR->>PDF: report_to_pdf()
-    PDF-->>DR: {slug}--report.pdf
-    DR-->>A: {report_path, pdf_path, validation}
-    A->>DR: update_closure()
-    DR->>DR: 更新 question/stance/hot/log
-    A-->>U: 报告 + PDF + 验证结果
-      </pre>
     </div>
   </div>
 </section>
 
-<!-- ==================== SLIDE 6: CORE CAPABILITIES ==================== -->
-<section class="slide" id="s6">
+<!-- ==================== SLIDE 5: VALUE LAYER 3 — INFRASTRUCTURE ==================== -->
+<section class="slide slide-auto" id="s5">
   <div class="slide-inner">
     <div class="slide-header">
-      <div class="slide-label">Core Capabilities</div>
-      <div class="slide-title">核心能力 — 差异化优势</div>
+      <div class="slide-label">Value Layer 3</div>
+      <div class="slide-title">基础设施</div>
+      <div class="slide-desc">多源入库、口语化查询、深度研究、维护自动化——稳定可靠</div>
     </div>
     <div class="features-grid fade-in">
-      <div class="f-card f-highlight">
+      <div class="f-card">
         <div class="f-icon">&#128230;</div>
         <h4>7 源自动入库</h4>
-        <p>微信 / 知乎 / YouTube / B站 / 抖音 / PDF / 本地文件 → 域优先路由 + 格式归一化 → 统一 Article 结构</p>
-        <span class="f-tag">source_adapters</span>
+        <p>微信 / 网页 / YouTube / B站 / 抖音 / PDF / 本地文件 → 域优先路由 + 格式归一化</p>
       </div>
-      <div class="f-card f-highlight">
-        <div class="f-icon">&#128218;</div>
-        <h4>分块深度精读</h4>
-        <p>长文档自动分块 → 逐块提取 → 跨块综合 → 精读版 claim 9x 粗读版。自动阈值 &gt;800 行</p>
-        <span class="f-tag">chunked-prepare</span>
-      </div>
-      <div class="f-card f-highlight">
-        <div class="f-icon">&#128220;</div>
-        <h4>简报页认知压缩</h4>
-        <p>6 维骨架（生成力叙事 / 数据 / 推演 / 失效信号 / 方法论评估 / 隐性假设） + 40 条主张清单 + 置信度标注 + 来源溯源</p>
-        <span class="f-tag">ingest_compile_v2</span>
+      <div class="f-card">
+        <div class="f-icon">&#128172;</div>
+        <h4>口语化查询</h4>
+        <p>自然语言 → LLM 理解意图 → 智能检索 + 综合 → 快速了解 / 认知简报 / 对比分析</p>
       </div>
       <div class="f-card">
         <div class="f-icon">&#128300;</div>
         <h4>假说驱动深度研究</h4>
-        <p>9 阶段推理驱动：假说形成 → 自适应搜索 → 证据校准 → 压力测试 → 7 项红线质量门控 + PDF 报告</p>
-        <span class="f-tag">deep_research</span>
+        <p>8 阶段推理驱动 + 7 项红线质量门控，所有断言携带证据标签</p>
       </div>
       <div class="f-card">
-        <div class="f-icon">&#128640;</div>
-        <h4>跨域联想 + 迁移结论</h4>
-        <p>bridge_logic → migration_conclusion，不只是"相似"而是"可迁移策略"</p>
-        <span class="f-tag">cross_domain_insights</span>
+        <div class="f-icon">&#128161;</div>
+        <h4>对话洞见捕获</h4>
+        <p>LLM 自动识别有价值问答，用户说"沉淀"即可入库</p>
       </div>
       <div class="f-card">
         <div class="f-icon">&#128736;</div>
-        <h4>立场影响检测</h4>
-        <p>reinforce / contradict / extend 自动检测新来源对已有立场页的影响</p>
-        <span class="f-tag">stance_impacts</span>
+        <h4>自动维护</h4>
+        <p>健康评分、Review Sweep、综合刷新、结构化维护建议</p>
       </div>
       <div class="f-card">
-        <div class="f-icon">&#128272;</div>
-        <h4>来源溯源验证</h4>
-        <p>grounding_quote 回溯原文，ASR/PDF 容差匹配，证据类型标注</p>
-        <span class="f-tag">grounding_validate</span>
-      </div>
-      <div class="f-card f-highlight">
         <div class="f-icon">&#127760;</div>
-        <h4>Obsidian 原生图谱自动化</h4>
-        <p>知识图谱 Mermaid + Louvain 社区分组 + 域子图页面 + graph_trim 自动精简 + 双向链接即时可见</p>
-        <span class="f-tag">graph_layers</span>
-      </div>
-      <div class="f-card f-highlight">
-        <div class="f-icon">&#128209;</div>
-        <h4>两层证据架构</h4>
-        <p>raw/ 不可变原始证据 vs wiki/ 可演化知识层——溯源永远可回原文，编译永远可再迭代</p>
-        <span class="f-tag">raw+wiki</span>
-      </div>
-      <div class="f-card">
-        <div class="f-icon">&#128200;</div>
-        <h4>主张演化追踪</h4>
-        <p>每次入库检测 reinforce/contradict/extend，主张从 Seeded → Supported 逐步成熟，知识库从存储升级为判断</p>
-        <span class="f-tag">claim_evolution</span>
-      </div>
-      <div class="f-card">
-        <div class="f-icon">&#128295;</div>
-        <h4>Schema 自动修正</h4>
-        <p>LLM 编译偏差自动纠错：枚举映射 + 嵌套层级修正 + 对象转字符串，用户无需手动修 JSON</p>
-        <span class="f-tag">auto-correct</span>
+        <h4>知识图谱</h4>
+        <p>Mermaid 静态图 + 域子图 + Louvain 社区分组 + 主图谱降噪</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ==================== SLIDE 7: VALUE ==================== -->
-<section class="slide" id="s7">
+<!-- ==================== SLIDE 6: WHO + FOOTER ==================== -->
+<section class="slide footer-slide" id="s6">
   <div class="slide-inner">
-    <div class="slide-header">
-      <div class="slide-label">Value Proposition</div>
-      <div class="slide-title">每次入库，知识库整体升级</div>
-    </div>
-    <div class="value-grid fade-in">
-      <div class="v-card">
-        <div class="v-num">1</div>
-        <div>
-          <h4>LLM 语义判断</h4>
-          <p>脚本不再做关键词匹配——相关来源、主张关系、综合内容全部由 LLM 语义分析</p>
+    <div style="margin-bottom:48px;">
+      <div class="slide-label">Who Is This For</div>
+      <div class="slide-title" style="margin-bottom:20px;">适合谁</div>
+      <div class="who-grid fade-in">
+        <div class="who-card">
+          <div class="title">&#10003; 希望知识库围绕意图生长</div>
+          <div class="desc">而不是被动堆叠文章</div>
         </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">2</div>
-        <div>
-          <h4>7 源自动入库</h4>
-          <p>微信 / 知乎 / YouTube / B站 / 抖音 / PDF / 本地文件 → 格式归一化 → 统一编译</p>
+        <div class="who-card">
+          <div class="title">&#10003; 新领域涌现时主动感知</div>
+          <div class="desc">想知道知识库正在往什么方向走</div>
         </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">3</div>
-        <div>
-          <h4>分块深度精读</h4>
-          <p>长文档自动分块 → 逐块提取 → 跨块综合，精读版 claim 9x 粗读版</p>
+        <div class="who-card">
+          <div class="title">&#10003; 多库场景下跨库洞察桥接</div>
+          <div class="desc">不同主题知识各归其位又互相补充</div>
         </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">4</div>
-        <div>
-          <h4>跨域联想 + 迁移结论</h4>
-          <p>不只是"相似"而是"可迁移策略"—— bridge_logic → migration_conclusion</p>
-        </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">5</div>
-        <div>
-          <h4>报告质量门控</h4>
-          <p>7 项红线检验 + 依赖链审查 + 假说压力测试</p>
-        </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">6</div>
-        <div>
-          <h4>来源溯源验证</h4>
-          <p>grounding_quote 回溯原文，ASR/PDF 容差匹配，证据类型标注</p>
-        </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">7</div>
-        <div>
-          <h4>假说驱动深度研究</h4>
-          <p>9 阶段推理驱动 + 自适应搜索 + 7 项红线质量门控，产出可审计的研究报告</p>
-        </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">8</div>
-        <div>
-          <h4>Obsidian 原生图谱</h4>
-          <p>知识图谱自动生成 + 域子图 + Louvain 分组 + 自动精简，直接在 Obsidian 中可视化</p>
-        </div>
-      </div>
-      <div class="v-card">
-        <div class="v-num">9</div>
-        <div>
-          <h4>两层证据架构</h4>
-          <p>raw/ 不可变溯源 vs wiki/ 可演化编译——存的是证据，读的是判断</p>
+        <div class="who-card">
+          <div class="title">&#10003; 使用 Claude Code 的知识工作者</div>
+          <div class="desc">需要可持久化的知识底座</div>
         </div>
       </div>
     </div>
+    <h2>知识库随意图生长</h2>
+    <p>Obsidian Wiki Skill V2.1 &middot; Value Point + Domain Proposal + 跨Vault桥接</p>
   </div>
 </section>
 
-<!-- ==================== FOOTER ==================== -->
-<section class="slide footer-slide">
-  <div class="slide-inner">
-    <h2>从阅读到知识操作系统</h2>
-    <p>Obsidian Wiki Skill V1.3.0 &middot; Chunked Deep-Reading &middot; Schema Auto-Correction &middot; 8 Prompt Constraints</p>
-  </div>
-</section>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
 <script>
-mermaid.initialize({
-  startOnLoad: true,
-  theme: 'dark',
-  themeVariables: {
-    primaryColor: '#222640',
-    primaryTextColor: '#e2e4ed',
-    primaryBorderColor: '#2d3148',
-    lineColor: '#8b8fa3',
-    secondaryColor: '#161822',
-    tertiaryColor: '#1c1f2e',
-    noteBkgColor: '#1c1f2e',
-    noteTextColor: '#e2e4ed',
-    noteBorderColor: '#2d3148',
-    actorBkg: '#222640',
-    actorBorder: '#6c5ce7',
-    actorTextColor: '#e2e4ed',
-    signalColor: '#8b8fa3',
-    signalTextColor: '#e2e4ed',
-    labelBoxBkgColor: '#161822',
-    labelBoxBorderColor: '#2d3148',
-    labelTextColor: '#e2e4ed',
-    loopTextColor: '#a29bfe',
-    activationBkgColor: '#1c1f2e',
-    activationBorderColor: '#6c5ce7',
-    sequenceNumberColor: '#fff',
-  },
-  sequence: {
-    actorMargin: 30,
-    mirrorActors: false,
-    messageMargin: 14,
-    boxMargin: 2,
-    noteMargin: 4,
-    useMaxWidth: true,
-    wrap: true,
-    width: 140,
-    actorFontSize: 11,
-    messageFontSize: 10,
-    noteFontSize: 9,
-    noteAlign: 'center',
-  }
-});
-
-/* After Mermaid renders, unwrap <pre> so SVG sits directly in .seq-container */
-function unwrapMermaid() {
-  document.querySelectorAll('.seq-container pre.mermaid').forEach(pre => {
-    const svg = pre.querySelector('svg');
-    if (!svg) return;
-    svg.style.width = '100%';
-    svg.style.height = 'auto';
-    pre.parentNode.insertBefore(svg, pre);
-    pre.remove();
-  });
-}
-if (document.readyState === 'complete') {
-  setTimeout(unwrapMermaid, 200);
-} else {
-  window.addEventListener('load', () => setTimeout(unwrapMermaid, 200));
-}
-
 /* Fade-in on scroll */
 const observer = new IntersectionObserver((entries) => {
   entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });

@@ -47,12 +47,14 @@ def _extract_claims_from_page(path: Path, meta: dict[str, str], body: str) -> li
     slug = path.stem
 
     for match in CLAIM_PATTERN.finditer(claim_section):
+        etype = match.group(1).strip()
         conf = match.group(2).strip()
         text = match.group(3).strip().rstrip("⚠️需验证").strip()
         if text:
             claims.append({
                 "text": text,
                 "confidence": conf,
+                "evidence_type": etype,
                 "source": f"{folder}/{slug}",
                 "source_title": meta.get("title", slug).strip('"'),
             })
@@ -204,24 +206,84 @@ def build_semantic_index(vault: Path) -> dict:
             # Build domain index entries
             for domain in domains:
                 if domain not in domains_index:
-                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "last_updated": date}
+                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "cross_domain_insights_count": 0, "last_updated": date}
                 domains_index[domain]["sources"].append(f"sources/{slug}")
                 if date and date > domains_index[domain].get("last_updated", ""):
                     domains_index[domain]["last_updated"] = date
 
     # Scan briefs
+    briefs_index: dict[str, dict] = {}
+    all_cross_domain_insights: list[dict[str, str]] = []
     briefs_dir = wiki_root / "briefs"
     if briefs_dir.exists():
         for path in sorted(briefs_dir.glob("*.md")):
             text = path.read_text(encoding="utf-8")
             meta, body = parse_frontmatter(text)
             slug = path.stem
+            title = meta.get("title", slug).strip('"')
             domains = _extract_domains_from_page(meta, body)
-            # Briefs contribute to domain index but don't add claims
+            confidence = _page_confidence(meta, body)
+            one_sentence = meta.get("one_sentence", "").strip('"')
+
+            # Extract skeleton excerpt (first 200 chars of 骨架 section)
+            skeleton_excerpt = ""
+            skeleton_section = section_body(body, "骨架")
+            if skeleton_section:
+                skeleton_excerpt = plain_text(skeleton_section)[:200]
+
+            # Extract claims from brief
+            brief_claims = _extract_claims_from_page(path, meta, body)
+
+            # Extract cross-domain insights from ## 跨域联想
+            cross_domain_section = section_body(body, "跨域联想")
+            if cross_domain_section:
+                for line in cross_domain_section.splitlines():
+                    stripped = line.strip()
+                    if not stripped.startswith("- "):
+                        continue
+                    entry_text = stripped[2:].strip()
+                    # Parse: **concept** → domain: bridge_logic → **可迁移结论**：conclusion
+                    concept_match = re.match(r'\*\*(.+?)\*\*\s*[→->]+\s*(.+?)(?:\s*[→->]+\s*(.+))?$', entry_text)
+                    if concept_match:
+                        mapped_concept = concept_match.group(1).strip()
+                        rest = concept_match.group(2).strip()
+                        # Split domain and bridge_logic
+                        if ':' in rest:
+                            target_domain, bridge_logic = rest.split(':', 1)
+                            target_domain = target_domain.strip()
+                            bridge_logic = bridge_logic.strip()
+                        else:
+                            target_domain = rest
+                            bridge_logic = ""
+                        migration_conclusion = ""
+                        if concept_match.group(3):
+                            mc = concept_match.group(3).strip()
+                            mc = re.sub(r'^\*\*可迁移结论\*\*[：:]\s*', '', mc)
+                            migration_conclusion = mc.strip()
+                        all_cross_domain_insights.append({
+                            "mapped_concept": mapped_concept,
+                            "target_domain": target_domain,
+                            "bridge_logic": bridge_logic,
+                            "migration_conclusion": migration_conclusion,
+                            "source": f"briefs/{slug}",
+                        })
+
+            briefs_index[slug] = {
+                "ref": f"briefs/{slug}",
+                "title": title,
+                "domains": domains,
+                "confidence": confidence,
+                "one_sentence": one_sentence,
+                "skeleton_excerpt": skeleton_excerpt,
+                "claims": brief_claims,
+                "related_concepts": _extract_related_concepts(body),
+            }
+
+            # Briefs also contribute to domain index
             for domain in domains:
                 if domain not in domains_index:
-                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "last_updated": ""}
-                if f"sources/{slug}" not in domains_index[domain]["sources"]:
+                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "cross_domain_insights_count": 0, "last_updated": ""}
+                if f"briefs/{slug}" not in domains_index[domain]["sources"]:
                     domains_index[domain]["sources"].append(f"briefs/{slug}")
 
     # Scan concepts
@@ -252,11 +314,13 @@ def build_semantic_index(vault: Path) -> dict:
                 "domains": domains,
                 "sources": [f"sources/{s}" for s in source_refs],
                 "related_concepts": related,
+                "current_judgment": section_body(body, "当前判断") or "",
+                "evidence_chain": section_body(body, "证据链") or "",
             }
 
             for domain in domains:
                 if domain not in domains_index:
-                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "last_updated": ""}
+                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "cross_domain_insights_count": 0, "last_updated": ""}
                 domains_index[domain]["concepts"].append(f"concepts/{slug}")
 
     # Scan entities
@@ -290,15 +354,42 @@ def build_semantic_index(vault: Path) -> dict:
 
             for domain in domains:
                 if domain not in domains_index:
-                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "last_updated": ""}
+                    domains_index[domain] = {"sources": [], "concepts": [], "entities": [], "cross_domain_insights_count": 0, "last_updated": ""}
                 domains_index[domain]["entities"].append(f"entities/{slug}")
 
-    # Scan stances for relationships
+    # Scan stances
+    stances_index: dict[str, dict] = {}
     stances_dir = wiki_root / "stances"
     if stances_dir.exists():
         for path in sorted(stances_dir.glob("*.md")):
             text = path.read_text(encoding="utf-8")
-            _, body = parse_frontmatter(text)
+            meta, body = parse_frontmatter(text)
+            slug = path.stem
+            title = meta.get("title", slug).strip('"')
+            status = meta.get("status", "active").strip('"')
+            confidence = meta.get("confidence", "Working").strip('"')
+            source_count = meta.get("source_count", "0").strip('"')
+            # Extract core judgment excerpt
+            core_judgment = section_body(body, "核心判断") or ""
+            core_judgment_excerpt = plain_text(core_judgment)[:300] if core_judgment else ""
+
+            # Count supporting and contradicting evidence
+            support_section = section_body(body, "支持证据")
+            contradict_section = section_body(body, "反对证据（steel-man）")
+            support_count = len(re.findall(r'\[\[sources/', support_section)) if support_section else 0
+            contradict_count = len(re.findall(r'\[\[sources/', contradict_section)) if contradict_section else 0
+
+            stances_index[slug] = {
+                "ref": f"stances/{slug}",
+                "title": title,
+                "status": status,
+                "confidence": confidence,
+                "core_judgment_excerpt": core_judgment_excerpt,
+                "source_count": int(source_count) if source_count.isdigit() else 0,
+                "support_count": support_count,
+                "contradict_count": contradict_count,
+            }
+
             rels = _extract_relationships_from_stance(path, body)
             all_relationships.extend(rels)
 
@@ -339,8 +430,17 @@ def build_semantic_index(vault: Path) -> dict:
         "total_domains": len(domains_index),
         "total_claims": len(all_claims),
         "total_relationships": len(all_relationships),
+        "total_briefs": len(briefs_index),
+        "total_stances": len(stances_index),
+        "total_cross_domain_insights": len(all_cross_domain_insights),
         "built_at": datetime.now().isoformat(),
     }
+
+    # Populate cross_domain_insights_count per domain
+    for insight in all_cross_domain_insights:
+        target = insight.get("target_domain", "")
+        if target and target in domains_index:
+            domains_index[target]["cross_domain_insights_count"] = domains_index[target].get("cross_domain_insights_count", 0) + 1
 
     return {
         "domains": domains_index,
@@ -349,6 +449,9 @@ def build_semantic_index(vault: Path) -> dict:
         "claims": all_claims,
         "relationships": all_relationships,
         "sources": source_pages,
+        "briefs": briefs_index,
+        "stances": stances_index,
+        "cross_domain_insights": all_cross_domain_insights,
         "stats": stats,
     }
 

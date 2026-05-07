@@ -34,6 +34,7 @@ def build_question_page(
     known_clues: str = "",
     needed_materials: str = "",
     related_sources: list[str] = [],
+    related_concepts: list[str] = [],
     created: str | None = None,
     last_updated: str | None = None,
 ) -> str:
@@ -42,6 +43,7 @@ def build_question_page(
     last_updated = last_updated or today
 
     source_links = "\n".join(f"- [[{s}]]" for s in related_sources) if related_sources else "- ..."
+    concept_links = "\n".join(f"- [[concepts/{c}]]" for c in related_concepts) if related_concepts else "- ..."
 
     lines = [
         "---",
@@ -68,6 +70,9 @@ def build_question_page(
         "## 回答需要什么类型的新材料",
         needed_materials or "- （待补充）",
         "",
+        "## 相关概念",
+        concept_links,
+        "",
         "## 相关来源",
         source_links,
         "",
@@ -89,6 +94,7 @@ def write_question_page(
     known_clues: str = "",
     needed_materials: str = "",
     related_sources: list[str] = [],
+    related_concepts: list[str] = [],
 ) -> Path:
     slug = question_slug(question)
     dir_path = vault / QUESTION_DIR
@@ -104,6 +110,7 @@ def write_question_page(
         known_clues=known_clues,
         needed_materials=needed_materials,
         related_sources=related_sources,
+        related_concepts=related_concepts,
     )
     page_path.write_text(content, encoding="utf-8")
     return page_path

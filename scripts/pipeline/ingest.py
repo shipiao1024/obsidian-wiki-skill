@@ -17,6 +17,7 @@ from pipeline.shared import (
     transcript_page_link,
     transcript_page_name,
 )
+from pipeline.structure_fix import fix_structure
 
 
 def build_agents_md() -> str:
@@ -169,7 +170,8 @@ def build_transcript_page(article: Article, slug: str) -> str:
     if article.transcript_subtitle_asset:
         lines.append(f'subtitle_asset: "raw/assets/{slug}/{article.transcript_subtitle_asset}"')
     lines.extend(["---", "", article.transcript_body.strip(), ""])
-    return "\n".join(lines)
+    content, _ = fix_structure("\n".join(lines))
+    return content
 
 
 def build_raw_page(article: Article, slug: str, article_assets_dir: Path) -> str:
@@ -225,4 +227,5 @@ def build_raw_page(article: Article, slug: str, article_assets_dir: Path) -> str
     else:
         lines.append(rewrite_image_links(body.strip(), article_assets_dir))
         lines.append("")
-    return "\n".join(lines)
+    content, _ = fix_structure("\n".join(lines))
+    return content

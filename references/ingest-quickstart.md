@@ -129,25 +129,34 @@ python scripts/wiki_ingest.py --vault "D:\Vault" --chunked --chunk-size 300 "D:\
 ### 关键判断
 【直接引用 brief.key_points 每条原文。禁止二次抽象——key_points 已是压缩产物，再压缩就丢失信息】
 
-### 跨域联想
+### 知识库关联
+【来自 source.knowledge_base_relation + update_proposals，列出已有页面的关联关系。格式：关联页面 + 关联说明。如无则写 "无已有关联"】
+
+### 跨域洞察
 【如有 cross_domain_insights，列出 mapped_concept + bridge_logic + migration_conclusion；如无则写 "无跨域发现"】
 
-### 冲突
-【只展示高置信度矛盾（confidence ≥ Supported），低置信度矛盾不展示；如无高置信度矛盾则写 "无明显冲突"】
+### 冲突与待验证立场
+【整合 contradictions（高置信度矛盾，confidence ≥ Supported）和 stance_impacts + claim_inventory 中 verification_needed=true 的主张。格式：每个条目标注来源类型（矛盾/待验证）和逻辑风险。如无则写 "无明显冲突"】
+
+### 开放问题
+【来自 compile JSON 的 open_questions，逐条列出。如无则省略此段】
 
 ### 建议下一步
 1. {基于内容的具体建议，如 "阅读 [[related_page]] 了解 XX 对比"}
 2. {维护建议，如 "该领域综合页需更新"}
 3. {如 delta 提案存在，提示审核}
+【与开放问题重叠时合并，不重复罗列。开放问题已列出的探索方向，这里只给行动建议而非重述问题】
 ```
 
 **填写规则（严格执行）**：
 - `one_sentence` 必须来自 compiled payload 的 `document_outputs.brief.one_sentence`，不可自行编造
 - `骨架` **直接引用** brief.skeleton.generators 的 narrative 原文，逐条列出，保留因果论证和精确措辞。**禁止拆成驱动因子/关键数据/正向循环/负向风险等子维度，禁止二次压缩、改写、概括**。如果原文太长，截取核心句而非重写
 - `关键判断` **直接引用** brief.key_points 原文，逐条列出。key_points 已是压缩产物，再压缩就丢失信息
-- `跨域联想` 来自 `result.cross_domain_insights`，必须包含 bridge_logic 和 migration_conclusion，不可只写摘要
-- `冲突` 只展示 `document_outputs.source.contradictions` 中高置信度的矛盾，低置信度矛盾不展示
+- `知识库关联` 来自 `source.knowledge_base_relation` 和 `update_proposals`，展示新入库内容与已有知识的连接
+- `跨域洞察` 来自 `result.cross_domain_insights`，必须包含 bridge_logic 和 migration_conclusion，不可只写摘要
+- `冲突与待验证立场` 整合 contradictions 和待验证主张。高置信度矛盾（confidence ≥ Supported）必须展示；低置信度矛盾和 stance_impacts 中 extend/reinforce 类不展示，但 verification_needed=true 的主张需列出并标注逻辑风险
+- `开放问题` 来自 compile JSON 的 `open_questions`，与"建议下一步"重叠时后者只给行动建议，不重述问题
 - `建议下一步` 由 LLM 基于实际内容生成，必须具体、可执行
 - PDF 路径来自 ingest_orchestrator 输出的 `brief_pdf_path` 字段；**必须传 --title 参数**（格式："{article.title} - 简报"），否则 Windows 中文标题提取失败会回退为"报告"
 
-**反二次压缩校验**：骨架和关键判断的每一条必须能在 brief 正文中找到原文对应句。如果 LLM 发现自己在"概括"而非"引用"，必须停下来回到 brief 原文重新提取。
+**反二次压缩校验**：骨架和关键判断的每一条必须能在 brief 正文中找到原文对应句。如果 LLM 发现自己在"概括"而非"引用"，必须停下来回到 brief 正本重新提取。

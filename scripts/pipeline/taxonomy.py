@@ -39,6 +39,175 @@ def _fill_placeholder_definition(body: str, section_name: str, definition: str) 
     return body[:m.start(2)] + definition + body[m.end(2):]
 
 
+_ORDINAL_RANK = {"Seeded": 0, "Preliminary": 1, "Working": 2, "Supported": 3, "Stable": 4}
+
+
+def _extract_matching_claims(
+    compiled_payload: dict | None,
+    concept_name: str,
+    source_slug: str,
+) -> tuple[str, list[str]]:
+    """Extract claims relevant to a concept from compiled_payload.claim_inventory.
+
+    Returns (best_judgment, evidence_chain_entries).
+    """
+    if not compiled_payload or compiled_payload.get("schema_version") != "2.0":
+        return "", []
+    result = compiled_payload.get("result", {})
+    if not isinstance(result, dict):
+        return "", []
+    claim_inventory = result.get("claim_inventory", [])
+    if not isinstance(claim_inventory, list):
+        return "", []
+
+    name_lower = concept_name.lower()
+    matching: list[dict] = []
+    for claim in claim_inventory:
+        if not isinstance(claim, dict):
+            continue
+        claim_text = str(claim.get("claim", ""))
+        if not claim_text:
+            continue
+        # Match if concept name appears in claim text or suggested_destination
+        name_in_claim = name_lower in claim_text.lower()
+        dest_match = False
+        for dest in (claim.get("suggested_destination") or []):
+            if isinstance(dest, str) and (name_lower in dest.lower() or concept_name in dest):
+                dest_match = True
+                break
+        if not name_in_claim and not dest_match:
+            continue
+        matching.append(claim)
+
+    if not matching:
+        return "", []
+
+    # Format evidence chain entries
+    entries = []
+    for claim in matching:
+        etype = str(claim.get("evidence_type", "inference")).strip()
+        conf = str(claim.get("confidence", "Working")).strip()
+        text = str(claim.get("claim", "")).strip()
+        entries.append(f"- [{etype}|{conf}] {text} —— [[sources/{source_slug}]]")
+
+    # Best judgment: highest-confidence Working+ claim
+    best = ""
+    best_rank = -1
+    for claim in matching:
+        conf = str(claim.get("confidence", "")).strip()
+        rank = _ORDINAL_RANK.get(conf, -1)
+        if rank > best_rank and rank >= 2:  # Working or above
+            best_rank = rank
+            best = str(claim.get("claim", "")).strip()
+
+    return best, entries
+
+
+def _fill_placeholder_judgment(body: str, judgment: str) -> str:
+    """Fill the 当前判断 section only if it's still placeholder."""
+    if not judgment:
+        return body
+    pattern = r'(##\s+当前判断\s*\n\n)(-?\s*待[^\n]*)'
+    m = re.search(pattern, body)
+    if not m:
+        return body
+    return body[:m.start(2)] + judgment + body[m.end(2):]
+
+
+def _append_evidence_chain(body: str, new_entries: list[str]) -> str:
+    """Append new evidence chain entries after existing ones. Also fills placeholder."""
+    if not new_entries:
+        return body
+    # Check if 证据链 section exists at all
+    section_match = re.search(r'(##\s+证据链\s*\n)', body)
+    if not section_match:
+        # Old-format page without 证据链 section; insert before 来自来源
+        insert_match = re.search(r'(##\s+来自来源\s*\n)', body)
+        if insert_match:
+            header = "## 证据链\n\n" + "\n".join(new_entries) + "\n\n"
+            return body[:insert_match.start()] + header + body[insert_match.start():]
+        return body
+
+    # Replace placeholder if present
+    placeholder_match = re.search(
+        r'(##\s+证据链\s*\n\n)(-?\s*待[^\n]*)',
+        body,
+    )
+    if placeholder_match:
+        replacement = "\n".join(new_entries)
+        return body[:placeholder_match.start(2)] + replacement + body[placeholder_match.end(2):]
+
+    # Append after last existing evidence entry (before next ## or end)
+    section_start = section_match.end()
+    # Find the next ## after the 证据链 section
+    next_section = re.search(r'\n##\s+', body[section_start:])
+    if next_section:
+        insert_pos = section_start + next_section.start()
+        entry_text = "\n".join(new_entries) + "\n"
+        return body[:insert_pos] + entry_text + body[insert_pos:]
+    else:
+        return body + "\n" + "\n".join(new_entries) + "\n"
+
+
+def _upgrade_judgment_if_higher(body: str, new_judgment: str, new_confidence: str) -> str:
+    """Update 当前判断 if new claim has higher confidence than existing one."""
+    if not new_judgment:
+        return body
+    new_rank = _ORDINAL_RANK.get(new_confidence, -1)
+    if new_rank < 2:  # Only Working+ upgrades existing
+        return body
+    # Extract current judgment confidence from body
+    m = re.search(r'##\s+当前判断\s*\n\n(.+?)(?=\n##|\Z)', body, re.S)
+    if not m:
+        return _fill_placeholder_judgment(body, new_judgment)
+    current_text = m.group(1).strip()
+    if current_text.startswith("- 待") or "待随着更多来源持续演化" in current_text:
+        return _fill_placeholder_judgment(body, new_judgment)
+    # Don't overwrite existing judgment — only fill placeholder
+    return body
+
+
+def _append_cross_domain_insights(body: str, insights: list[dict], source_slug: str) -> str:
+    """Append cross-domain insights to a concept page's 跨域联想 section."""
+    if not insights:
+        return body
+    # Build insight lines
+    entries = []
+    for insight in insights[:5]:
+        concept = insight.get("mapped_concept", "")
+        target = insight.get("target_domain", "")
+        logic = insight.get("bridge_logic", "")
+        mc = insight.get("migration_conclusion", "")
+        mc_suffix = f" → **可迁移结论**：{mc}" if mc else ""
+        entries.append(f"- **{concept}** → {target}：{logic}{mc_suffix}")
+
+    # Check if 跨域联想 section exists
+    section_match = re.search(r'(##\s+跨域联想\s*\n)', body)
+    if not section_match:
+        # Insert before 来自来源
+        insert_match = re.search(r'(##\s+来自来源\s*\n)', body)
+        if insert_match:
+            header = "## 跨域联想\n\n" + "\n".join(entries) + "\n\n"
+            return body[:insert_match.start()] + header + body[insert_match.start():]
+        return body
+
+    # Replace placeholder if present
+    placeholder_match = re.search(r'(##\s+跨域联想\s*\n\n)(-?\s*待[^\n]*)', body)
+    if placeholder_match:
+        replacement = "\n".join(entries)
+        return body[:placeholder_match.start(2)] + replacement + body[placeholder_match.end(2):]
+
+    # Append after existing entries
+    section_start = section_match.end()
+    next_section = re.search(r'\n##\s+', body[section_start:])
+    if next_section:
+        insert_pos = section_start + next_section.start()
+        entry_text = "\n".join(entries) + "\n"
+        return body[:insert_pos] + entry_text + body[insert_pos:]
+    else:
+        return body + "\n" + "\n".join(entries) + "\n"
+
+
 def ensure_comparison_page(
     vault: Path,
     subject_a: str,
@@ -140,12 +309,67 @@ def ensure_taxonomy_pages(
             if dname and reason:
                 domain_defs[dname] = reason
 
+    # Extract matching claims for each concept/entity from claim_inventory
+    concept_judgments: dict[str, str] = {}
+    concept_evidence: dict[str, list[str]] = {}
+    concept_confidence: dict[str, str] = {}
+    entity_judgments: dict[str, str] = {}
+    entity_evidence: dict[str, list[str]] = {}
+    entity_confidence: dict[str, str] = {}
+    for name in concept_names:
+        best, entries = _extract_matching_claims(compiled_payload, name, source_slug)
+        concept_judgments[name] = best
+        concept_evidence[name] = entries
+        # Extract confidence of the best judgment
+        if best and compiled_payload and compiled_payload.get("schema_version") == "2.0":
+            result = compiled_payload.get("result", {})
+            claim_inventory = result.get("claim_inventory", [])
+            for claim in claim_inventory:
+                if isinstance(claim, dict) and str(claim.get("claim", "")).strip() == best:
+                    concept_confidence[name] = str(claim.get("confidence", "Working")).strip()
+                    break
+    for name in entity_names:
+        best, entries = _extract_matching_claims(compiled_payload, name, source_slug)
+        entity_judgments[name] = best
+        entity_evidence[name] = entries
+        if best and compiled_payload and compiled_payload.get("schema_version") == "2.0":
+            result = compiled_payload.get("result", {})
+            claim_inventory = result.get("claim_inventory", [])
+            for claim in claim_inventory:
+                if isinstance(claim, dict) and str(claim.get("claim", "")).strip() == best:
+                    entity_confidence[name] = str(claim.get("confidence", "Working")).strip()
+                    break
+
+    # Extract cross-domain insights matching each concept
+    concept_cross_domain: dict[str, list[dict]] = {}
+    cross_domain_insights = []
+    if compiled_payload and compiled_payload.get("schema_version") == "2.0":
+        result = compiled_payload.get("result", {})
+        cross_domain_insights = result.get("cross_domain_insights", []) if isinstance(result, dict) else []
+    for name in concept_names:
+        name_lower = name.lower()
+        matching_insights = []
+        for insight in cross_domain_insights:
+            if not isinstance(insight, dict):
+                continue
+            mc = insight.get("mapped_concept", "")
+            if name_lower in str(mc).lower() or str(mc).lower() in name_lower:
+                matching_insights.append(insight)
+        concept_cross_domain[name] = matching_insights
+
     for name in concept_names:
         path = vault / "wiki" / "concepts" / f"{concept_slug(name)}.md"
         is_candidate = concept_candidates.get(name, False)
         item_lifecycle = "candidate" if (is_candidate or source_lifecycle == "candidate") else "official"
         if not path.exists():
-            page_text = build_concept_page(name, source_slug, domains=domain_names, definition=concept_defs.get(name, ""), related_entities=entity_names)
+            page_text = build_concept_page(
+                name, source_slug, domains=domain_names,
+                definition=concept_defs.get(name, ""),
+                related_entities=entity_names,
+                current_judgment=concept_judgments.get(name, ""),
+                evidence_chain=concept_evidence.get(name, []),
+                cross_domain_insights=concept_cross_domain.get(name, []),
+            )
             if item_lifecycle == "candidate":
                 page_text = page_text.replace('lifecycle: "official"', 'lifecycle: "candidate"').replace('status: "seed"', 'status: "candidate"')
             path.write_text(page_text, encoding="utf-8")
@@ -159,6 +383,13 @@ def ensure_taxonomy_pages(
         updated = replace_links_section(updated, "相关主题域", domain_links, "- 待补充。")
         updated = replace_links_section(updated, "相关实体", entity_links_for_concepts, "- 待补充。")
         updated = _fill_placeholder_definition(updated, "定义", concept_defs.get(name, ""))
+        updated = _fill_placeholder_judgment(updated, concept_judgments.get(name, ""))
+        updated = _upgrade_judgment_if_higher(updated, concept_judgments.get(name, ""), concept_confidence.get(name, ""))
+        updated = _append_evidence_chain(updated, concept_evidence.get(name, []))
+        # Append cross-domain insights
+        insights = concept_cross_domain.get(name, [])
+        if insights:
+            updated = _append_cross_domain_insights(updated, insights, source_slug)
         path.write_text(render_frontmatter(meta) + updated.strip() + "\n", encoding="utf-8")
         check_and_upgrade_status(vault, "concepts", name, concept_slug)
 
@@ -167,7 +398,13 @@ def ensure_taxonomy_pages(
         is_candidate = entity_candidates.get(name, False)
         item_lifecycle = "candidate" if (is_candidate or source_lifecycle == "candidate") else "official"
         if not path.exists():
-            page_text = build_entity_page(name, source_slug, domains=domain_names, definition=entity_defs.get(name, ""), related_concepts=concept_names)
+            page_text = build_entity_page(
+                name, source_slug, domains=domain_names,
+                definition=entity_defs.get(name, ""),
+                related_concepts=concept_names,
+                current_judgment=entity_judgments.get(name, ""),
+                evidence_chain=entity_evidence.get(name, []),
+            )
             if item_lifecycle == "candidate":
                 page_text = page_text.replace('lifecycle: "official"', 'lifecycle: "candidate"').replace('status: "seed"', 'status: "candidate"')
             path.write_text(page_text, encoding="utf-8")
@@ -181,6 +418,9 @@ def ensure_taxonomy_pages(
         updated = replace_links_section(updated, "相关主题域", domain_links, "- 待补充。")
         updated = replace_links_section(updated, "相关概念", concept_links_for_entities, "- 待补充。")
         updated = _fill_placeholder_definition(updated, "类型", entity_defs.get(name, ""))
+        updated = _fill_placeholder_judgment(updated, entity_judgments.get(name, ""))
+        updated = _upgrade_judgment_if_higher(updated, entity_judgments.get(name, ""), entity_confidence.get(name, ""))
+        updated = _append_evidence_chain(updated, entity_evidence.get(name, []))
         path.write_text(render_frontmatter(meta) + updated.strip() + "\n", encoding="utf-8")
         check_and_upgrade_status(vault, "entities", name, entity_slug)
 

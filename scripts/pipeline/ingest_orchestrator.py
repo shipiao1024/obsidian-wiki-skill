@@ -209,6 +209,40 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
         source_slug=slug,
         article_title=article.title,
     )
+
+    # --- Domain proposals: track unclaimed domains ---
+    domain_reasons: dict[str, str] = {}
+    if compiled_payload and compiled_payload.get("schema_version") == "2.0":
+        kp = compiled_payload.get("result", {}).get("knowledge_proposals", {})
+        for item in kp.get("domains", []):
+            if isinstance(item, dict):
+                dname = item.get("name", "").strip()
+                reason = item.get("reason", "").strip()
+                if dname and reason:
+                    domain_reasons[dname] = reason
+
+    from .vault_config import update_domain_proposals as _update_domain_proposals
+    proposable_domains = _update_domain_proposals(
+        vault=vault,
+        compiled_domains=domains_override or [],
+        domain_reasons=domain_reasons,
+        source_slug=slug,
+        source_title=article.title,
+        source_date=article.date,
+    )
+
+    # --- Post-compile vault routing suggestion ---
+    routing_suggestion = None
+    if domains_override and domains_override != ["待归域"]:
+        from .vault_config import resolve_vault as _resolve_vault_for_routing
+        routed_vault = _resolve_vault_for_routing(article_domains=domains_override)
+        if routed_vault and routed_vault.resolve() != vault.resolve():
+            routing_suggestion = {
+                "current_vault": str(vault),
+                "suggested_vault": str(routed_vault),
+                "domains": domains_override,
+            }
+
     # --- purpose.md filtering: skip taxonomy pages for excluded content ---
     purpose_filter_active = _apply_purpose_filter(vault, article)
 
@@ -230,9 +264,22 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
         result = compiled_payload.get("result", {})
         open_questions = result.get("open_questions", []) if isinstance(result, dict) else []
     from .question import write_question_page as _write_question_page, check_source_answers_questions as _check_answers, update_question_status as _update_q_status, question_slug as _q_slug
+    from .extractors import concept_slug as _cslug
+    # Build known concept name list for matching against questions
+    _known_concept_names = []
+    if compiled_payload and compiled_payload.get("schema_version") == "2.0":
+        _kp = (compiled_payload.get("result", {}) or {}).get("knowledge_proposals", {})
+        if isinstance(_kp, dict):
+            for kind in ("concepts", "entities"):
+                for item in (_kp.get(kind, []) or []):
+                    if isinstance(item, dict) and isinstance(item.get("name"), str):
+                        _known_concept_names.append(item["name"])
     for q_text in open_questions[:5]:
         if isinstance(q_text, str) and q_text.strip():
-            _write_question_page(vault, question=q_text.strip(), origin_source=f"sources/{slug}")
+            # Extract matching concept names from question text
+            q_concepts = [cn for cn in _known_concept_names if cn.lower() in q_text.lower() or any(p.lower() in q_text.lower() for p in re.split(r'[\s\-_/]+', cn) if len(p) >= 2)]
+            q_concept_slugs = [_cslug(cn) for cn in q_concepts[:5]]
+            _write_question_page(vault, question=q_text.strip(), origin_source=f"sources/{slug}", related_concepts=q_concept_slugs)
     # Check if new source answers any open/partial questions
     source_keywords = re.findall(r"[一-鿿]{2,8}|[A-Za-z0-9\-+]{2,}", f"{article.title} {article.body[:800]}")
     answered_slugs = _check_answers(vault, article.title, slug, source_keywords)
@@ -244,19 +291,34 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
     if compiled_payload and compiled_payload.get("schema_version") == "2.0":
         result = compiled_payload.get("result", {})
         stance_impacts = result.get("stance_impacts", []) if isinstance(result, dict) else []
-    from .stance import apply_stance_impact as _apply_stance_impact, stance_slug as _stance_slug
+    from .stance import apply_stance_impact as _apply_stance_impact, stance_slug as _stance_slug, build_stance_page as _build_stance_page
     for impact_entry in stance_impacts[:5]:
         if not isinstance(impact_entry, dict):
             continue
         topic = str(impact_entry.get("stance_topic", "")).strip()
         impact = str(impact_entry.get("impact", "neutral")).strip()
         evidence = str(impact_entry.get("evidence", "")).strip()
+        impact_confidence = str(impact_entry.get("confidence", "Preliminary")).strip()
         if not topic or impact == "neutral" or impact not in ("reinforce", "contradict", "extend"):
             continue
         s_slug = _stance_slug(topic)
         stance_page = vault / "wiki" / "stances" / f"{s_slug}.md"
         if stance_page.exists():
             _apply_stance_impact(vault, s_slug, impact=impact, source_link=f"sources/{slug}", note=evidence)
+        else:
+            # Auto-create stance page when no existing page
+            supporting = [f"- {evidence} —— [[sources/{slug}]]"] if impact in ("reinforce", "extend") else []
+            contradicting = [f"- {evidence} —— [[sources/{slug}]]"] if impact == "contradict" else []
+            core_judgement = evidence if impact == "reinforce" else f"（待形成判断，首条证据：{evidence[:80]}）"
+            page_text = _build_stance_page(
+                topic=topic, core_judgement=core_judgement,
+                confidence=impact_confidence,
+                supporting_evidence=supporting, contradicting_evidence=contradicting,
+                source_count=1,
+            )
+            stance_page.parent.mkdir(parents=True, exist_ok=True)
+            stance_page.write_text(page_text, encoding="utf-8")
+            print(f"  [stance-auto] Created stance page: {s_slug}", file=sys.stderr)
 
     # --- Auto-create comparison pages from v2 compile comparisons ---
     comparisons = []
@@ -310,6 +372,23 @@ def ingest_article(vault: Path, article: Article, force: bool, no_llm_compile: b
         brief_pdf_path=_brief_pdf_path, delta_count=len(emitted_deltas),
     )
     impact_text = format_ingest_report(impact)
+
+    # --- Domain proposal notification ---
+    if proposable_domains:
+        impact_text += "\n## 新领域提案\n\n"
+        for pd in proposable_domains:
+            impact_text += f"- **{pd['domain']}**：已出现 {pd['source_count']} 个来源\n"
+            if pd.get("reasons_sample"):
+                impact_text += f"  最新理由：{pd['reasons_sample'][-1]}\n"
+            impact_text += "  建议添加为新的价值锚点，或明确归入排除范围。\n"
+
+    # --- Vault routing suggestion ---
+    if routing_suggestion:
+        suggested_name = Path(routing_suggestion["suggested_vault"]).name
+        impact_text += f"\n## 路由建议\n\n"
+        impact_text += f"此内容的领域（{', '.join(routing_suggestion['domains'])}）更适合 **{suggested_name}**。\n"
+        impact_text += f"下次入库时可指定 `--vault {routing_suggestion['suggested_vault']}`。\n"
+        impact_text += f"如需迁移已有内容，运行 `python scripts/reroute_vault.py --slug {slug}`。\n"
 
     # --- Detect deep research triggers ---
     try:

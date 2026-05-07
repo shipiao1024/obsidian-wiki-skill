@@ -53,13 +53,15 @@ class Candidate:
 
 
 FOLDER_WEIGHTS = {
+    "briefs": 8,
     "sources": 6,
-    "briefs": 5,
+    "concepts": 5,
+    "stances": 4,
     "syntheses": 4,
     "domains": 3,
     "comparisons": 3,
-    "concepts": 2,
-    "entities": 2,
+    "entities": 3,
+    "questions": 2,
     "outputs": -10,
 }
 
@@ -201,13 +203,34 @@ def prioritized_text(path: Path) -> str:
             [
                 get_one_sentence(meta, body),
                 section_excerpt(body, "骨架") or section_excerpt(body, "数据") or section_excerpt(body, "核心要点"),
+                section_excerpt(body, "关键判断"),
+                section_excerpt(body, "跨域联想"),
                 section_excerpt(body, "值得回看"),
+            ]
+        )
+    elif page_type == "concept":
+        prioritized.extend(
+            [
+                section_excerpt(body, "定义"),
+                section_excerpt(body, "当前判断"),
+                section_excerpt(body, "证据链"),
+                section_excerpt(body, "跨域联想"),
+            ]
+        )
+    elif page_type == "stance":
+        prioritized.extend(
+            [
+                section_excerpt(body, "核心判断"),
+                section_excerpt(body, "支持证据"),
+                section_excerpt(body, "反对证据（steel-man）"),
             ]
         )
     elif page_type == "synthesis":
         prioritized.extend(
             [
                 section_excerpt(body, "当前结论"),
+                section_excerpt(body, "证据链"),
+                section_excerpt(body, "立场追踪"),
                 section_excerpt(body, "近期来源"),
             ]
         )
@@ -266,7 +289,7 @@ def select_candidates(vault: Path, question: str, top: int) -> list[Candidate]:
 
     fallback: list[Candidate] = []
     terms = query_terms(question)
-    for folder in ["briefs", "sources", "concepts", "entities", "domains", "comparisons", "syntheses"]:
+    for folder in ["briefs", "sources", "concepts", "stances", "entities", "domains", "comparisons", "syntheses"]:
         for path in (vault / "wiki" / folder).glob("*.md"):
             text = plain_text(path.read_text(encoding="utf-8"))
             score = score_text(path.stem, terms) * 2 + score_text(text[:1200], terms) + FOLDER_WEIGHTS.get(folder, 0)

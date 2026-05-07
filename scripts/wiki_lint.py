@@ -25,6 +25,7 @@ from pipeline.text_utils import (
     parse_frontmatter,
     section_body,
 )
+from pipeline.structure_fix import detect_structure_violations
 
 WIKI_FOLDERS = ["sources", "briefs", "concepts", "entities", "domains", "syntheses", "comparisons", "questions", "stances", "outputs"]
 LINK_PATTERN = re.compile(r"\[\[([^|\]]+)")
@@ -266,6 +267,18 @@ def collect_lint_data(vault: Path) -> dict:
         for c in all_claims if c["confidence"] == "low"
     ]
 
+    # Structure violations (math/list/table blank line issues)
+    structure_violations: list[dict] = []
+    for folder in ("briefs", "sources", "concepts", "entities", "domains", "syntheses", "comparisons"):
+        dir_path = vault / "wiki" / folder
+        if not dir_path.exists():
+            continue
+        for path in dir_path.glob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            for v in detect_structure_violations(text):
+                v["file"] = f"{folder}/{path.stem}"
+                structure_violations.append(v)
+
     return {
         "broken_links": broken_links,
         "orphan_pages": orphan_pages,
@@ -280,6 +293,7 @@ def collect_lint_data(vault: Path) -> dict:
         "candidate_pages": candidate_pages,
         "all_claims": all_claims,
         "page_sample": sample_pages(vault),
+        "structure_violations": structure_violations,
     }
 
 
@@ -330,6 +344,7 @@ def main_legacy(vault: Path) -> int:
         "claim_inventory_issues": [],
         "status_mismatch": [],
         "orphan_comparisons": [],
+        "structure_violations": [],
     }
 
     raw_articles = sorted((vault / "raw" / "articles").glob("*.md"))
@@ -404,6 +419,19 @@ def main_legacy(vault: Path) -> int:
                     expected = ordered[s_idx + 1]
             if status != expected and ref_count > 0:
                 results["status_mismatch"].append(f"{folder}/{path.stem}: status={status}, expected={expected} (refs={ref_count})")
+
+    # Structure violations
+    structure_violations: list[dict] = []
+    for folder in ("briefs", "sources", "concepts", "entities", "domains", "syntheses", "comparisons"):
+        dir_path = vault / "wiki" / folder
+        if not dir_path.exists():
+            continue
+        for path in dir_path.glob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            for v in detect_structure_violations(text):
+                v["file"] = f"{folder}/{path.stem}"
+                structure_violations.append(v)
+    results["structure_violations"] = structure_violations
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0

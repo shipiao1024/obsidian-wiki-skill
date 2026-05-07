@@ -49,6 +49,7 @@ DOMAIN_MIN_SCORE = {
 }
 CONCEPT_PAGE_THRESHOLD = 2
 ENTITY_PAGE_THRESHOLD = 2
+PROPOSAL_THRESHOLD = 3  # Domain proposal: min sources before proposing new Value Point
 
 VALID_PAGE_STATUS = ("candidate", "seed", "developing", "mature", "evergreen", "draft")
 STATUS_UPGRADE_THRESHOLDS = {

@@ -72,15 +72,15 @@ def extract_terms(query: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 FOLDER_BASE_WEIGHT = {
+    "briefs": 8,
     "sources": 6,
-    "briefs": 5,
+    "concepts": 5,
+    "stances": 4,
     "syntheses": 4,
-    "comparisons": 3,
     "domains": 3,
-    "concepts": 2,
-    "entities": 2,
-    "stances": 2,
-    "questions": 1,
+    "comparisons": 3,
+    "entities": 3,
+    "questions": 2,
     "outputs": -10,
 }
 
@@ -198,7 +198,7 @@ def retrieve(
     # --- Phase 2: Score all pages ---
     scored_pages: list[dict] = []
 
-    for folder_key in ("sources", "concepts", "entities", "domains", "syntheses", "comparisons", "stances", "questions"):
+    for folder_key in ("briefs", "sources", "concepts", "entities", "domains", "syntheses", "comparisons", "stances", "questions"):
         if type_filter and folder_key not in type_filter:
             continue
         pages = index.get(folder_key, {})
@@ -214,7 +214,7 @@ def retrieve(
                     matched_entity_slugs.add(slug)
 
     # Re-score with updated matched sets
-    for folder_key in ("sources", "concepts", "entities", "domains", "syntheses", "comparisons", "stances", "questions"):
+    for folder_key in ("briefs", "sources", "concepts", "entities", "domains", "syntheses", "comparisons", "stances", "questions"):
         if type_filter and folder_key not in type_filter:
             continue
         pages = index.get(folder_key, {})
@@ -265,6 +265,42 @@ def retrieve(
         if rel.get("from") in top_refs or rel.get("to") in top_refs:
             top_rels.append(rel)
 
+    # --- Phase 5: Build navigation hints (cognitive context for LLM reference) ---
+    # These are prior judgments saved at ingest time, NOT system conclusions.
+    # LLM should read, evaluate, and decide whether to adopt, revise, or override.
+    cognitive_context: dict[str, list[dict]] = {
+        "concept_judgments": [],    # Prior ingest-time judgments — for LLM reference, not automatic citation
+        "stance_positions": [],     # Accumulated stance positions — for LLM awareness, not binding conclusions
+        "cross_domain_insights": [], # Cross-domain connections — for LLM exploration, not proven facts
+    }
+    for slug in matched_concept_slugs:
+        concept_data = index.get("concepts", {}).get(slug, {})
+        judgment = concept_data.get("current_judgment", "")
+        if judgment and not judgment.startswith("- 待"):
+            cognitive_context["concept_judgments"].append({
+                "concept": slug,
+                "title": concept_data.get("title", slug),
+                "prior_judgment": judgment[:300],  # "prior" signals this is a previous LLM judgment, not a script conclusion
+                "confidence": concept_data.get("confidence", ""),
+                "sources": concept_data.get("sources", []),
+                "note": "prior ingest-time judgment — LLM should evaluate before adopting",
+            })
+    for slug, stance_data in index.get("stances", {}).items():
+        if _term_overlap(stance_data.get("title", slug), terms) > 0 or _term_overlap(slug, terms) > 0:
+            cognitive_context["stance_positions"].append({
+                "topic": stance_data.get("title", slug),
+                "confidence": stance_data.get("confidence", ""),
+                "status": stance_data.get("status", ""),
+                "prior_judgment": stance_data.get("core_judgment_excerpt", ""),  # "prior" signals accumulated position
+                "source_count": stance_data.get("source_count", 0),
+                "support_count": stance_data.get("support_count", 0),
+                "contradict_count": stance_data.get("contradict_count", 0),
+                "note": "accumulated stance — LLM should verify against current evidence",
+            })
+    for insight in index.get("cross_domain_insights", []):
+        if _term_overlap(insight.get("mapped_concept", ""), terms) > 0 or _term_overlap(insight.get("target_domain", ""), terms) > 0:
+            cognitive_context["cross_domain_insights"].append(insight)
+
     return {
         "query": query,
         "terms": terms,
@@ -272,6 +308,7 @@ def retrieve(
         "claims": top_claims,
         "relationships": top_rels,
         "matched_domains": matched_domains,
+        "cognitive_context": cognitive_context,
         "total_scored": len(scored_pages),
     }
 
@@ -311,17 +348,17 @@ def _extract_key_sections(path: Path) -> dict[str, str]:
             if excerpt:
                 result[heading] = excerpt
     elif page_type == "concept":
-        for heading in ("定义", "核心机制", "关键判断", "来自来源"):
+        for heading in ("定义", "当前判断", "证据链", "跨域联想", "来自来源"):
             excerpt = section_excerpt(body, heading)
             if excerpt:
                 result[heading] = excerpt
     elif page_type == "synthesis":
-        for heading in ("当前结论", "近期来源", "关键判断"):
+        for heading in ("当前结论", "证据链", "立场追踪", "跨域联想", "知识缺口", "近期来源", "关键判断"):
             excerpt = section_excerpt(body, heading)
             if excerpt:
                 result[heading] = excerpt
     elif page_type == "stance":
-        for heading in ("当前立场", "支持证据", "反对证据（steel-man）"):
+        for heading in ("核心判断", "支持证据", "反对证据（steel-man）", "未解决子问题"):
             excerpt = section_excerpt(body, heading)
             if excerpt:
                 result[heading] = excerpt
@@ -332,6 +369,83 @@ def _extract_key_sections(path: Path) -> dict[str, str]:
     return result
 
 
+def _cross_vault_supplementary_retrieve(
+    primary_vault: Path,
+    primary_result: dict,
+    query: str,
+    top_k: int = 3,
+) -> list[dict]:
+    """Check cross_domain_insights and supplement from other vaults.
+
+    Steps:
+    1. Collect target_domains from primary vault's cross_domain_insights
+    2. Match against other vaults' purpose.md focus domains
+    3. Load matching vaults' semantic-index.json, run supplementary retrieve
+    4. Mark results as cross-vault supplementary
+
+    Returns list of supplementary page dicts.
+    """
+    from pipeline.vault_config import load_vault_registry, parse_purpose_md
+
+    registry = load_vault_registry()
+    if len(registry) < 2:
+        return []
+
+    # Collect target domains from cross_domain_insights
+    insights = primary_result.get("cognitive_context", {}).get("cross_domain_insights", [])
+    target_domains: set[str] = set()
+    for insight in insights:
+        td = insight.get("target_domain", "")
+        if td:
+            target_domains.add(td)
+
+    if not target_domains:
+        return []
+
+    # Find secondary vaults whose focus domains overlap with target domains
+    supplementary_results: list[dict] = []
+    for entry in registry:
+        vault_path = Path(entry["path"])
+        if not vault_path.exists() or vault_path.resolve() == primary_vault.resolve():
+            continue
+
+        purpose = parse_purpose_md(vault_path)
+        focus_domains = set(purpose.get("focus", []))
+        overlap = target_domains & focus_domains
+        if not overlap:
+            continue
+
+        # Load secondary vault's semantic index
+        secondary_index_path = vault_path / "wiki" / "semantic-index.json"
+        if not secondary_index_path.exists():
+            continue
+
+        try:
+            secondary_index = json.loads(secondary_index_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+
+        # Run supplementary retrieve
+        secondary_result = retrieve(
+            secondary_index, query, top_k=top_k,
+            type_filter=["briefs", "sources", "concepts"],
+        )
+
+        # Mark results as cross-vault supplementary
+        for page in secondary_result.get("top_pages", []):
+            page["vault"] = entry.get("name", vault_path.name)
+            page["is_cross_vault"] = True
+            # Attach bridge logic from matching insights
+            for insight in insights:
+                if insight.get("target_domain", "") in page.get("domains", []):
+                    page["bridge_logic"] = insight.get("bridge_logic", "")
+                    page["mapped_concept"] = insight.get("mapped_concept", "")
+                    break
+            supplementary_results.append(page)
+
+    return supplementary_results[:top_k * 2]
+
+
 def retrieve_with_reading(
     index: dict,
     query: str,
@@ -339,6 +453,7 @@ def retrieve_with_reading(
     top_k: int = 5,
     type_filter: list[str] | None = None,
     read_pages: int = 3,
+    cross_vault: bool = True,
 ) -> dict:
     """Retrieve + read top pages for deep context."""
     result = retrieve(index, query, top_k, type_filter)
@@ -356,6 +471,32 @@ def retrieve_with_reading(
         page_contents.append(sections)
 
     result["page_contents"] = page_contents
+
+    # --- Cross-vault supplementary search ---
+    if cross_vault:
+        supplementary = _cross_vault_supplementary_retrieve(
+            primary_vault=vault,
+            primary_result=result,
+            query=query,
+            top_k=3,
+        )
+        if supplementary:
+            result["cross_vault_supplementary"] = supplementary
+            result["cognitive_context"]["cross_vault_supplementary"] = [
+                {
+                    "title": p.get("title", ""),
+                    "ref": p.get("ref", ""),
+                    "score": p.get("score", 0),
+                    "folder": p.get("folder", ""),
+                    "domains": p.get("domains", []),
+                    "vault": p.get("vault", ""),
+                    "bridge_logic": p.get("bridge_logic", ""),
+                    "mapped_concept": p.get("mapped_concept", ""),
+                    "note": "cross-vault supplementary result — LLM should evaluate relevance",
+                }
+                for p in supplementary
+            ]
+
     return result
 
 

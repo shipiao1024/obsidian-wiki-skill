@@ -62,7 +62,8 @@ python scripts/wiki_retrieve.py --vault "D:\Vault" --query "用户问题" --top-
 2. 查语义索引（`wiki/semantic-index.json`）→ 匹配 domain、concept、entity、claim
 3. 评分排序 → 综合标题匹配、声明匹配、域匹配、置信度、时效性
 4. 读 top-k 页面 → 提取关键段落（核心摘要、关键判断、支持/反对证据）
-5. 输出结构化上下文包（JSON）
+5. 跨 Vault 补充检索 → 如果跨域联想指向其他 vault 的关注领域，自动从目标 vault 补充 top-3 结果
+6. 输出结构化上下文包（JSON）
 
 **输出结构**：
 ```json
@@ -80,6 +81,16 @@ python scripts/wiki_retrieve.py --vault "D:\Vault" --query "用户问题" --top-
 - `--top-k 8`：需要更广覆盖时（深度综合、对比分析）
 - `--read 5`：需要更深上下文时（反驳材料、素材包）
 - `--types source,concept`：限定搜索范围（快速了解只要 sources + concepts）
+
+**跨 Vault 补充检索**（V2.1）：
+
+当检索结果的 `cross_domain_insights` 指向其他 vault 的关注领域时，`wiki_retrieve.py` 自动从目标 vault 补充检索 top-3 结果，附加在 `cross_vault_supplementary` 字段中。
+
+处理跨 Vault 补充结果的原则：
+- 标注"来自其他知识库"和来源 vault 名称
+- 附带 bridge_logic 解释为什么跨 vault 检索
+- 补充结果权威性低于主 vault 结果——需要交叉验证
+- 主 vault 有充分信息时，不必展开跨 vault 补充
 
 ### 2b. 语义索引查询（补充）
 
@@ -100,13 +111,13 @@ python scripts/wiki_index_v2.py --vault "D:\Vault" --query "BEV感知"
 
 ```
 搜索范围优先级：
-1. wiki/sources/    — 保真来源页（信息密度最高）
-2. wiki/briefs/     — 快读页（快速概览）
-3. wiki/concepts/   — 概念页（定义和边界）
-4. wiki/syntheses/  — 综合页（跨来源分析）
-5. wiki/entities/   — 实体页
-6. wiki/comparisons/ — 对比页
-7. wiki/stances/    — 立场页
+1. wiki/briefs/     — 认知压缩页（信息密度最高，骨架+数据+推演+关键判断）
+2. wiki/concepts/   — 概念页（当前判断+证据链，可消费的预计算结构）
+3. wiki/stances/    — 立场页（预计算立场+证据计数+置信度）
+4. wiki/sources/    — 来源页（完整信息但需重新理解）
+5. wiki/syntheses/  — 综合页（跨来源分析）
+6. wiki/entities/   — 实体页
+7. wiki/comparisons/ — 对比页
 ```
 
 ### 2d. 反驳材料收集
@@ -120,6 +131,52 @@ python scripts/wiki_index_v2.py --vault "D:\Vault" --query "BEV感知"
 - 单次查询读取页面控制在 **10 页以内**
 - 检索结果中的 `page_contents` 已包含关键段落，通常不需要再读全文
 - 仅当问题涉及精确数字、原文引用时，才回到 `raw/articles/` 验证
+
+### 2f. 认知结构使用方式：脚本导航，LLM 判断（V2.0 核心原则）
+
+检索返回的 `cognitive_context` 是**导航线索**，不是答案预制。里面是前人在入库时做的判断被保存下来——你知道"这里有前人标注"，但**最终判断权在你**。
+
+**原则：脚本导航，LLM 判断**
+
+- 脚本告诉你知识在哪、前人标注了什么（GPS）
+- 你决定怎么用这些知识、要不要采纳前人判断（驾驶员）
+- 前人判断是参考，不是命令——你有权采纳、修正、推翻
+
+**1. Concept 当前判断 → 优先阅读，自主判断**
+
+concept 页的 `当前判断` 是入库时 LLM 从 claim_inventory 中选出的最高置信度 claim：
+- **优先阅读**，判断是否与你读到的其他信息一致
+- 采纳时标注：`前人在入库时判断（N 个来源支持，置信度 X）——[[concepts/slug]]`
+- 不一致时说明分歧：`前人判断为 X，但当前证据显示 Y，分歧点在于...`
+- 不要因为"已有判断"就跳过阅读 source/brief
+
+**2. Stance 立场位置 → 优先参考，了解累积立场**
+
+stance 页记录了累积的立场变化（支持/反对证据计数）：
+- **优先参考**，了解知识库对该话题的累积立场
+- 如发现新证据与立场冲突，指出矛盾并说明你的依据
+- stance 是前人劳动，不是系统结论
+
+**3. Brief 页 → 参考框架，可扩展重组**
+
+brief 页的 6 维骨架是入库时 LLM 编译的认知压缩：
+- **优先阅读**，作为回答框架的参考起点
+- 你可以扩展、重组或补充骨架中缺失的角度
+- 不要机械复用骨架——根据你的判断决定回答结构
+
+**4. Source 页 → 深度验证**
+
+source 页在以下场景深入阅读：
+- 前人判断与你的推理不一致时，验证原文确认分歧
+- 需要完整论证过程（前人判断可能基于不完整信息）
+- 高精度验证（精确数字、原文引用、作者立场）
+
+**5. Raw → 仅溯源验证**
+
+`raw/articles/` 只在验证以下内容时回看：
+- 精确数字和日期
+- 原文完整引用
+- 作者原话立场
 
 ---
 
@@ -154,7 +211,11 @@ python scripts/wiki_index_v2.py --vault "D:\Vault" --query "BEV感知"
 
 | 可靠度 | 来源 | 使用方式 |
 |--------|------|---------|
-| 高 | sources/、briefs/（quality: high） | 直接引用 |
+| 高 | briefs/（认知压缩，最高信息密度）、concepts/ 的当前判断+证据链 | 直接引用，标注来源和置信度 |
+| 高 | stances/（预计算立场，含证据计数） | 直接引用立场和置信度 |
+| 中 | sources/（完整信息但需重新理解） | 需要细节时回看，标注来源 |
+| 中 | syntheses/（跨源综合） | 可引用，建议交叉验证 |
+| 低 | outputs/ 或 candidate 页面 | 谨慎引用，标注"待确认" |
 | 中 | concepts/、syntheses/（quality: medium） | 引用 + 建议交叉验证 |
 | 低 | outputs/、candidate 页面 | 谨慎引用，标注"待确认" |
 
